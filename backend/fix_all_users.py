@@ -4,48 +4,52 @@ from backend.models import User
 from backend.auth import get_password_hash
 
 def fix_all_users():
+    users_to_fix = [
+        {"username": "admin", "role": "admin", "email": "admin@example.com"},
+        {"username": "inspector", "role": "inspector", "email": "inspector@example.com"},
+        {"username": "worker", "role": "worker", "email": "worker@example.com"},
+        {"username": "store", "role": "store", "email": "store@example.com"},
+        {"username": "manager", "role": "manager", "email": "manager@example.com"},
+    ]
+    
+    pwd_hash = get_password_hash("Admin@1234")
+    
     with Session(engine) as session:
-        # Standard password for all
-        pwd_hash = get_password_hash("Admin@1234")
-        
-        users_to_fix = [
-            {"username": "inspector", "email": "inspector@example.com", "role": "inspector", "full_name": "Inspector"},
-            {"username": "worker", "email": "worker@example.com", "role": "worker", "full_name": "Site Worker"},
-            {"username": "store", "email": "store@example.com", "role": "store", "full_name": "Store Manager"},
-            {"username": "manager", "email": "manager@example.com", "role": "management", "full_name": "Project Manager"}
-        ]
-
-        for u in users_to_fix:
-            statement = select(User).where(User.username == u["username"])
-            db_user = session.exec(statement).first()
+        for user_info in users_to_fix:
+            statement = select(User).where(User.username == user_info["username"])
+            user = session.exec(statement).first()
             
-            if db_user:
-                print(f"Updating '{u['username']}' password...")
-                db_user.hashed_password = pwd_hash
-                session.add(db_user)
+            if user:
+                print(f"Updating password for '{user_info['username']}'...")
+                user.hashed_password = pwd_hash
+                user.role = user_info["role"] # Ensure role is correct
+                session.add(user)
             else:
-                print(f"Creating '{u['username']}' user...")
+                print(f"Creating user '{user_info['username']}'...")
                 # Check email conflict
-                statement = select(User).where(User.email == u["email"])
-                email_conflict = session.exec(statement).first()
+                email_stmt = select(User).where(User.email == user_info["email"])
+                email_conflict = session.exec(email_stmt).first()
                 if email_conflict:
-                    print(f"  Removing conflicting email user: {email_conflict.username}")
+                    print(f"  Removing conflict for email {user_info['email']}")
                     session.delete(email_conflict)
                     session.commit()
                 
                 new_user = User(
-                    username=u["username"],
-                    email=u["email"],
-                    full_name=u["full_name"],
-                    role=u["role"],
+                    username=user_info["username"],
+                    email=user_info["email"],
+                    full_name=user_info["username"].capitalize(),
+                    role=user_info["role"],
                     hashed_password=pwd_hash,
                     status="active"
                 )
                 session.add(new_user)
         
         session.commit()
-        print("\nAll users fixed/created with password: 'Admin@1234'")
-        print("Users: inspector, worker, store, manager")
+        print("\n=== CREDENTIALS UPDATED ===")
+        print("All passwords set to: 'Admin@1234'")
+        print("---------------------------")
+        for u in users_to_fix:
+            print(f"Role: {u['role'].ljust(10)} | Username: {u['username']}")
 
 if __name__ == "__main__":
     fix_all_users()

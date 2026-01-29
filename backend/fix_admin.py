@@ -17,7 +17,7 @@ def fix_admin():
         statement = select(User).where(User.username == "admin")
         admin_user = session.exec(statement).first()
         
-        pwd_hash = get_password_hash("Admin@123")
+        pwd_hash = get_password_hash("Admin@1234")
         
         if admin_user:
             print("Updating 'admin' password...")
@@ -44,7 +44,7 @@ def fix_admin():
             session.add(admin_user)
         
         session.commit()
-        print("Admin user fixed. Username: 'admin', Password: 'Admin@123'")
+        print("Admin user fixed. Username: 'admin', Password: 'Admin@1234'")
 
 if __name__ == "__main__":
     fix_admin()
