@@ -6,3 +6,5 @@ passlib[bcrypt]
 python-multipart
 mysql-connector-python
 python-dotenv
+pymysql
+bcrypt==3.2.2
