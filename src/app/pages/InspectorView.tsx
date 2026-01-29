@@ -1,4 +1,5 @@
-import { useState } from 'react';
+import { useState, useRef } from 'react';
+import { Html5Qrcode } from 'html5-qrcode';
 import { Card, CardContent, CardHeader, CardTitle } from '../components/ui/card';
 import { Button } from '../components/ui/button';
 import { Input } from '../components/ui/input';
@@ -10,6 +11,7 @@ import { QrCode, Upload, Calendar, CheckCircle, AlertTriangle, XCircle } from 'l
 import { mockTools, mockInspections } from '../types/tool';
 import { toast } from 'sonner';
 import { DatePicker } from '../components/ui/date-picker';
+import api from '../services/api';
 
 const InspectorView = () => {
   const [scannedTool, setScannedTool] = useState<any>(null);
@@ -17,17 +19,116 @@ const InspectorView = () => {
     result: 'pass',
     usabilityPercentage: '',
     remarks: '',
+    nextSite: '',
     inspectionDate: new Date(),
   });
 
-  const simulateScan = () => {
-    setScannedTool(mockTools[0]);
+  // ...
+  const [scanning, setScanning] = useState(false);
+  const fileInputRef = useRef<HTMLInputElement>(null);
+
+  const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    if (!e.target.files || e.target.files.length === 0) return;
+
+    const file = e.target.files[0];
+    setScanning(true);
+
+    const html5QrCode = new Html5Qrcode("reader-hidden-inspector");
+
+    try {
+      const decodedText = await html5QrCode.scanFile(file, true);
+      handleScan(decodedText);
+    } catch (err) {
+      console.error("Error scanning file", err);
+      toast.error("Could not read QR code from image");
+    } finally {
+      setScanning(false);
+      html5QrCode.clear();
+    }
   };
 
-  const handleSubmit = () => {
-    toast.success('Inspection saved successfully');
-    setScannedTool(null);
-    setInspectionData({ result: 'pass', usabilityPercentage: '', remarks: '', inspectionDate: new Date() });
+  const triggerScan = () => {
+    fileInputRef.current?.click();
+  };
+
+  const handleScan = async (rawCode: string) => {
+    try {
+      // Extract code if it's a URL
+      let code = rawCode;
+      if (rawCode.includes('/view-tool/')) {
+        const parts = rawCode.split('/view-tool/');
+        if (parts.length > 1) {
+          code = parts[1];
+        }
+      }
+      // ... continue logic
+
+      toast.info(`Scanning: ${code}...`);
+      const response = await api.get(`/tools/qr/${code}`);
+
+      const tool = response.data;
+      // Map backend fields to frontend interface if needed
+
+      const mappedTool = {
+        id: tool.id,
+        description: tool.description,
+        make: tool.make,
+        capacity: tool.capacity,
+        safeWorkingLoad: tool.safe_working_load,
+        purchaserName: tool.purchaser_name,
+        dateOfSupply: tool.date_of_supply,
+        lastInspectionDate: tool.last_inspection_date,
+        currentSite: tool.current_site,
+        status: tool.status,
+        qrCode: tool.qr_code
+      };
+
+      setScannedTool(mappedTool);
+      toast.success('Tool found!');
+    } catch (error) {
+      console.error(error);
+      toast.error('Tool not found or scan failed');
+      setScannedTool(null);
+    }
+  };
+
+  const handleSubmit = async () => {
+    try {
+      if (!scannedTool) return;
+
+      const payload = {
+        tool_id: scannedTool.id,
+        date: inspectionData.inspectionDate,
+        result: inspectionData.result,
+        usability_percentage: parseFloat(inspectionData.usabilityPercentage) || null,
+        remarks: inspectionData.remarks,
+        photos: '' // Add photo logic if needed
+      };
+
+      await api.post('/inspections', payload);
+
+      // Update Tool's Next Site if provided
+      if (inspectionData.nextSite) {
+        await api.patch(`/tools/${scannedTool.id}`, {
+          next_site: inspectionData.nextSite
+        });
+      }
+
+      toast.success('Inspection saved successfully');
+
+      // Refresh tool data to show updated status
+      if (scannedTool.qrCode) {
+        handleScan(scannedTool.qrCode);
+      }
+
+      // Reset form but keep tool view? Or reset everything?
+      // Usually better to keep tool view to see the new status.
+      setInspectionData({ result: 'pass', usabilityPercentage: '', remarks: '', inspectionDate: new Date() });
+
+    } catch (error) {
+      console.error(error);
+      toast.error('Failed to save inspection');
+    }
   };
 
   const getResultIcon = (result: string) => {
@@ -63,10 +164,50 @@ const InspectorView = () => {
                 <div className="w-48 h-48 border-4 border-dashed border-gray-300 rounded-lg flex items-center justify-center">
                   <QrCode className="w-24 h-24 text-gray-400" />
                 </div>
-                <Button onClick={simulateScan} className="bg-[#1E3A8A]">
-                  <QrCode className="w-4 h-4 mr-2" />
-                  Simulate Scan
-                </Button>
+
+                <div className="flex w-full max-w-sm items-center space-x-2">
+                  <Input
+                    placeholder="Enter QR Code manually"
+                    id="manual-qr"
+                  />
+                  <Button
+                    onClick={() => {
+                      const input = document.getElementById('manual-qr') as HTMLInputElement;
+                      if (input && input.value) {
+                        handleScan(input.value);
+                      } else {
+                        // Default simulation
+                        handleScan('TOOL-SEED-001');
+                      }
+                    }}
+                    className="bg-[#1E3A8A]"
+                  >
+                    Scan / Search
+                  </Button>
+                </div>
+
+                <div className="flex flex-col items-center w-full max-w-sm pt-4 border-t">
+                  <p className="text-sm text-gray-500 mb-2">-- OR --</p>
+                  <div id="reader-hidden-inspector" className="hidden"></div>
+                  <input
+                    type="file"
+                    accept="image/*"
+                    capture="environment"
+                    ref={fileInputRef}
+                    onChange={handleFileUpload}
+                    className="hidden"
+                  />
+                  <Button
+                    variant="outline"
+                    onClick={triggerScan}
+                    className="w-full border-dashed border-2 border-green-500 text-green-700 hover:bg-green-50"
+                    disabled={scanning}
+                  >
+                    {scanning ? "Scanning Image..." : "📷 Upload QR Image"}
+                  </Button>
+                </div>
+
+                <p className="text-xs text-gray-400">Try: TOOL-SEED-001</p>
               </div>
             </CardContent>
           </Card>
@@ -79,7 +220,7 @@ const InspectorView = () => {
                   <CardTitle>Tool Summary</CardTitle>
                 </CardHeader>
                 <CardContent className="pt-6">
-                  <div className="grid grid-cols-2 gap-4">
+                  <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
                     <div>
                       <p className="text-sm text-gray-500">Tool ID</p>
                       <p className="font-mono font-medium">{scannedTool.id}</p>
@@ -90,11 +231,29 @@ const InspectorView = () => {
                     </div>
                     <div>
                       <p className="text-sm text-gray-500">Make</p>
-                      <p className="font-medium">{scannedTool.make}</p>
+                      <p className="font-medium">{scannedTool.make || '-'}</p>
+                    </div>
+                    <div>
+                      <p className="text-sm text-gray-500">Capacity</p>
+                      <p className="font-medium">{scannedTool.capacity || '-'}</p>
                     </div>
                     <div>
                       <p className="text-sm text-gray-500">SWL</p>
-                      <p className="font-medium">{scannedTool.safeWorkingLoad}</p>
+                      <p className="font-medium">{scannedTool.safeWorkingLoad || '-'}</p>
+                    </div>
+                    <div>
+                      <p className="text-sm text-gray-500">Current Site</p>
+                      <p className="font-medium">{scannedTool.currentSite || '-'}</p>
+                    </div>
+                    <div>
+                      <p className="text-sm text-gray-500">Purchaser</p>
+                      <p className="font-medium truncate" title={scannedTool.purchaserName}>{scannedTool.purchaserName || '-'}</p>
+                    </div>
+                    <div>
+                      <p className="text-sm text-gray-500">Supply Date</p>
+                      <p className="font-medium">
+                        {scannedTool.dateOfSupply ? new Date(scannedTool.dateOfSupply).toLocaleDateString() : '-'}
+                      </p>
                     </div>
                   </div>
                 </CardContent>
@@ -110,15 +269,15 @@ const InspectorView = () => {
                     <Label>Inspection Date <span className="text-red-600">*</span></Label>
                     <DatePicker
                       date={inspectionData.inspectionDate}
-                      onDateChange={(date) => setInspectionData({...inspectionData, inspectionDate: date || new Date()})}
+                      onDateChange={(date) => setInspectionData({ ...inspectionData, inspectionDate: date || new Date() })}
                     />
                   </div>
 
                   <div className="space-y-3">
                     <Label>Inspection Result</Label>
-                    <RadioGroup 
+                    <RadioGroup
                       value={inspectionData.result}
-                      onValueChange={(value) => setInspectionData({...inspectionData, result: value})}
+                      onValueChange={(value) => setInspectionData({ ...inspectionData, result: value })}
                     >
                       <div className="flex items-center space-x-2">
                         <RadioGroupItem value="pass" id="pass" />
@@ -127,13 +286,7 @@ const InspectorView = () => {
                           Pass
                         </Label>
                       </div>
-                      <div className="flex items-center space-x-2">
-                        <RadioGroupItem value="conditional" id="conditional" />
-                        <Label htmlFor="conditional" className="font-normal cursor-pointer flex items-center gap-2">
-                          <AlertTriangle className="w-4 h-4 text-[#F59E0B]" />
-                          Conditional
-                        </Label>
-                      </div>
+
                       <div className="flex items-center space-x-2">
                         <RadioGroupItem value="fail" id="fail" />
                         <Label htmlFor="fail" className="font-normal cursor-pointer flex items-center gap-2">
@@ -144,7 +297,7 @@ const InspectorView = () => {
                     </RadioGroup>
                   </div>
 
-                  {(inspectionData.result === 'pass' || inspectionData.result === 'conditional') && (
+                  {(inspectionData.result === 'pass') && (
                     <div className="space-y-2">
                       <Label htmlFor="usability">Usability Percentage <span className="text-red-600">*</span></Label>
                       <Input
@@ -152,7 +305,7 @@ const InspectorView = () => {
                         type="number"
                         placeholder="e.g., 95"
                         value={inspectionData.usabilityPercentage}
-                        onChange={(e) => setInspectionData({...inspectionData, usabilityPercentage: e.target.value})}
+                        onChange={(e) => setInspectionData({ ...inspectionData, usabilityPercentage: e.target.value })}
                         required
                       />
                     </div>
@@ -165,8 +318,18 @@ const InspectorView = () => {
                       placeholder="Enter inspection notes and observations..."
                       rows={4}
                       value={inspectionData.remarks}
-                      onChange={(e) => setInspectionData({...inspectionData, remarks: e.target.value})}
+                      onChange={(e) => setInspectionData({ ...inspectionData, remarks: e.target.value })}
                       required
+                    />
+                  </div>
+
+                  <div className="space-y-2">
+                    <Label htmlFor="nextSite">Next Site Location</Label>
+                    <Input
+                      id="nextSite"
+                      placeholder="Enter where this tool is going next..."
+                      value={inspectionData.nextSite}
+                      onChange={(e) => setInspectionData({ ...inspectionData, nextSite: e.target.value })}
                     />
                   </div>
 
@@ -179,7 +342,7 @@ const InspectorView = () => {
                     </div>
                   </div>
 
-                  <Button 
+                  <Button
                     className="w-full bg-[#16A34A] hover:bg-[#16A34A]/90"
                     onClick={handleSubmit}
                   >

@@ -21,25 +21,21 @@ const StoreView = () => {
     switch (status) {
       case 'usable':
         return 'bg-[#16A34A] text-white';
-      case 'under-repair':
-        return 'bg-[#F59E0B] text-white';
       case 'scrap':
-        return 'bg-[#DC2626] text-white';
+        return 'bg-red-100 text-red-700';
       default:
-        return 'bg-gray-500 text-white';
+        return 'bg-gray-100 text-gray-700';
     }
   };
 
-  const getStatusText = (status: string) => {
+  const getStatusLabel = (status: string) => {
     switch (status) {
       case 'usable':
         return 'Usable';
-      case 'under-repair':
-        return 'Under Repair';
       case 'scrap':
         return 'Scrap';
       default:
-        return 'Unknown';
+        return status;
     }
   };
 
@@ -54,9 +50,8 @@ const StoreView = () => {
       <Card>
         <CardContent className="py-12">
           <div className="flex flex-col items-center space-y-6">
-            <div className={`w-64 h-64 border-4 border-dashed rounded-lg flex items-center justify-center ${
-              scanning ? 'border-[#1E3A8A] animate-pulse' : 'border-gray-300'
-            }`}>
+            <div className={`w-64 h-64 border-4 border-dashed rounded-lg flex items-center justify-center ${scanning ? 'border-[#1E3A8A] animate-pulse' : 'border-gray-300'
+              }`}>
               {scanning ? (
                 <div className="text-center">
                   <div className="w-16 h-16 border-4 border-[#1E3A8A] border-t-transparent rounded-full animate-spin mx-auto mb-4"></div>
@@ -69,8 +64,8 @@ const StoreView = () => {
                 </div>
               )}
             </div>
-            <Button 
-              size="lg" 
+            <Button
+              size="lg"
               className="bg-[#1E3A8A] hover:bg-[#1E3A8A]/90"
               onClick={simulateScan}
               disabled={scanning}

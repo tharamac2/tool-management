@@ -16,7 +16,7 @@ export interface Tool {
   currentSite: string;
   nextSite: string;
   qrCode: string;
-  status: 'usable' | 'under-repair' | 'scrap';
+  status: 'usable' | 'scrap';
   expiryDate: string;
 }
 

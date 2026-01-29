@@ -1,14 +1,14 @@
 import { ReactNode, useState } from 'react';
 import { Link, useLocation } from 'react-router-dom';
 import { User } from '../App';
-import { 
-  LayoutDashboard, 
-  Package, 
-  QrCode, 
-  ClipboardCheck, 
-  BarChart3, 
-  Bell, 
-  Settings, 
+import {
+  LayoutDashboard,
+  Package,
+  QrCode,
+  ClipboardCheck,
+  BarChart3,
+  Bell,
+  Settings,
   LogOut,
   Menu,
   X,
@@ -172,9 +172,8 @@ const Layout = ({ children, user, onLogout }: LayoutProps) => {
                   {notifications.map((notification) => (
                     <div
                       key={notification.id}
-                      className={`px-3 py-3 hover:bg-gray-50 cursor-pointer border-b ${
-                        notification.unread ? 'bg-blue-50' : ''
-                      }`}
+                      className={`px-3 py-3 hover:bg-gray-50 cursor-pointer border-b ${notification.unread ? 'bg-blue-50' : ''
+                        }`}
                     >
                       <div className="flex items-start gap-3">
                         <div className={`w-2 h-2 rounded-full mt-2 ${notification.unread ? 'bg-[#1E3A8A]' : 'bg-gray-300'}`} />
@@ -211,27 +210,17 @@ const Layout = ({ children, user, onLogout }: LayoutProps) => {
                 </Button>
               </DropdownMenuTrigger>
               <DropdownMenuContent align="end" className="w-56">
-                <DropdownMenuLabel>
-                  <div className="flex flex-col">
-                    <span className="font-medium">{user.name}</span>
-                    <span className="text-xs text-gray-500 capitalize font-normal">{user.role}</span>
+                <DropdownMenuLabel className="font-normal">
+                  <div className="flex flex-col space-y-1">
+                    <p className="text-sm font-medium leading-none">{user?.name}</p>
+                    <p className="text-xs leading-none text-muted-foreground capitalize">
+                      {user?.role}
+                    </p>
                   </div>
                 </DropdownMenuLabel>
                 <DropdownMenuSeparator />
-                <DropdownMenuItem className="cursor-pointer">
-                  <UserCircle className="w-4 h-4 mr-2" />
-                  <span>My Profile</span>
-                </DropdownMenuItem>
-                <DropdownMenuItem className="cursor-pointer">
-                  <Settings className="w-4 h-4 mr-2" />
-                  <span>Settings</span>
-                </DropdownMenuItem>
-                <DropdownMenuSeparator />
-                <DropdownMenuItem 
-                  className="cursor-pointer text-red-600 focus:text-red-600 focus:bg-red-50"
-                  onClick={onLogout}
-                >
-                  <LogOut className="w-4 h-4 mr-2" />
+                <DropdownMenuItem onClick={onLogout} className="text-red-600 focus:text-red-600 cursor-pointer">
+                  <LogOut className="mr-2 h-4 w-4" />
                   <span>Logout</span>
                 </DropdownMenuItem>
               </DropdownMenuContent>
@@ -243,9 +232,8 @@ const Layout = ({ children, user, onLogout }: LayoutProps) => {
       <div className="flex">
         {/* Sidebar - Desktop */}
         <aside
-          className={`hidden lg:block bg-white border-r border-gray-200 transition-all duration-300 ${
-            sidebarOpen ? 'w-64' : 'w-0 overflow-hidden'
-          }`}
+          className={`hidden lg:block bg-white border-r border-gray-200 transition-all duration-300 ${sidebarOpen ? 'w-64' : 'w-0 overflow-hidden'
+            }`}
         >
           <nav className="p-4 space-y-1">
             {filteredNavItems.map((item) => {
@@ -254,11 +242,10 @@ const Layout = ({ children, user, onLogout }: LayoutProps) => {
                 <Link
                   key={item.path}
                   to={item.path}
-                  className={`flex items-center gap-3 px-4 py-3 rounded-lg transition-colors ${
-                    isActive
+                  className={`flex items-center gap-3 px-4 py-3 rounded-lg transition-colors ${isActive
                       ? 'bg-[#1E3A8A] text-white'
                       : 'text-gray-700 hover:bg-gray-100'
-                  }`}
+                    }`}
                 >
                   {item.icon}
                   <span>{item.label}</span>
@@ -279,11 +266,10 @@ const Layout = ({ children, user, onLogout }: LayoutProps) => {
                     <Link
                       key={item.path}
                       to={item.path}
-                      className={`flex items-center gap-3 px-4 py-3 rounded-lg transition-colors ${
-                        isActive
+                      className={`flex items-center gap-3 px-4 py-3 rounded-lg transition-colors ${isActive
                           ? 'bg-[#1E3A8A] text-white'
                           : 'text-gray-700 hover:bg-gray-100'
-                      }`}
+                        }`}
                       onClick={() => setMobileMenuOpen(false)}
                     >
                       {item.icon}

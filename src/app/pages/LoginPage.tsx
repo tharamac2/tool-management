@@ -1,10 +1,13 @@
 import { useState } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { Button } from '../components/ui/button';
 import { Input } from '../components/ui/input';
 import { Label } from '../components/ui/label';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '../components/ui/card';
 import { User } from '../App';
 import { QrCode } from 'lucide-react';
+import api from '../services/api';
+import { toast } from 'sonner';
 
 interface LoginPageProps {
   onLogin: (user: User) => void;
@@ -13,36 +16,67 @@ interface LoginPageProps {
 const LoginPage = ({ onLogin }: LoginPageProps) => {
   const [username, setUsername] = useState('');
   const [password, setPassword] = useState('');
+  const navigate = useNavigate();
 
-  const handleLogin = () => {
-    // Mock authentication
-    let user: User;
-    
-    switch (username.toLowerCase()) {
+  const handleNavigation = (role: string) => {
+    switch (role) {
       case 'admin':
-        user = { id: '1', name: 'Admin User', role: 'admin' };
-        break;
-      case 'store':
-        user = { id: '2', name: 'Store Manager', role: 'store' };
+        navigate('/tool-master');
         break;
       case 'inspector':
-        user = { id: '3', name: 'Inspector Smith', role: 'inspector' };
+        navigate('/inspector');
+        break;
+      case 'store':
+        navigate('/store-view');
         break;
       case 'management':
-        user = { id: '4', name: 'Manager Johnson', role: 'management' };
+        navigate('/dashboard');
         break;
       case 'worker':
-        user = { id: '5', name: 'Worker Jones', role: 'worker' };
+        navigate('/worker');
         break;
       default:
-        user = { id: '1', name: 'Admin User', role: 'admin' };
+        navigate('/');
     }
-    
-    onLogin(user);
+  };
+
+  const handleLogin = async () => {
+    try {
+      const formData = new FormData();
+      formData.append('username', username);
+      formData.append('password', password);
+
+      const response = await api.post('/users/token', formData, {
+        headers: { 'Content-Type': 'multipart/form-data' },
+      });
+
+      const { access_token, role } = response.data;
+      localStorage.setItem('token', access_token);
+
+      const user: User = {
+        id: username,
+        name: username,
+        role: role as User['role']
+      };
+
+      onLogin(user);
+      toast.success('Login successful');
+      handleNavigation(role); // Navigate after login
+    } catch (error) {
+      toast.error('Invalid credentials');
+      console.error('Login failed', error);
+    }
   };
 
   const handleWorkerAccess = () => {
-    onLogin({ id: '5', name: 'Worker', role: 'worker' });
+    const workerUser: User = {
+      id: 'worker-guest',
+      name: 'Guest Worker',
+      role: 'worker'
+    };
+    onLogin(workerUser);
+    toast.success('Entered as Guest Worker');
+    handleNavigation('worker'); // Navigate after login
   };
 
   return (
@@ -80,7 +114,7 @@ const LoginPage = ({ onLogin }: LoginPageProps) => {
                 required
               />
             </div>
-            <Button 
+            <Button
               className="w-full bg-[#1E3A8A] hover:bg-[#1E3A8A]/90"
               onClick={handleLogin}
             >
@@ -97,8 +131,8 @@ const LoginPage = ({ onLogin }: LoginPageProps) => {
             </div>
           </div>
 
-          <Button 
-            variant="outline" 
+          <Button
+            variant="outline"
             className="w-full border-2"
             onClick={handleWorkerAccess}
           >

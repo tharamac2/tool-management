@@ -1,101 +1,200 @@
-import { useState } from 'react';
+import { useState, useRef } from 'react';
 import { Card, CardContent } from '../components/ui/card';
 import { Button } from '../components/ui/button';
-import { QrCode, CheckCircle, XCircle, ArrowRight } from 'lucide-react';
+import { QrCode, CheckCircle, XCircle, ArrowRight, Camera } from 'lucide-react';
+import { Html5Qrcode } from 'html5-qrcode';
+import api from '../services/api';
+import { toast } from 'sonner';
 
 const SplitToolMatching = () => {
   const [step, setStep] = useState(1);
   const [partA, setPartA] = useState('');
   const [partB, setPartB] = useState('');
-  const [scanning, setScanning] = useState(false);
-  const [result, setResult] = useState<'match' | 'mismatch' | null>(null);
+  const [partADetails, setPartADetails] = useState<any>(null); // Store full details
+  const [partBDesc, setPartBDesc] = useState('');
+  const [partAStatus, setPartAStatus] = useState<'usable' | 'scrap'>('usable');
+  const [partBStatus, setPartBStatus] = useState<'usable' | 'scrap'>('usable');
 
-  const simulateScanPartA = () => {
-    setScanning(true);
-    setTimeout(() => {
-      setPartA('SET-A-001');
-      setScanning(false);
-      setStep(2);
-    }, 1500);
+  const [scanning, setScanning] = useState(false);
+  const [result, setResult] = useState<'match' | 'mismatch' | 'mixed_status' | null>(null);
+
+  const fileInputRef = useRef<HTMLInputElement>(null);
+  const [activeScan, setActiveScan] = useState<'A' | 'B' | null>(null);
+
+  const triggerCamera = (part: 'A' | 'B') => {
+    setActiveScan(part);
+    fileInputRef.current?.click();
   };
 
-  const simulateScanPartB = () => {
+  const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    if (!e.target.files || e.target.files.length === 0) return;
+
+    const file = e.target.files[0];
     setScanning(true);
-    setTimeout(() => {
-      // Randomly match or mismatch for demo
-      const isMatch = Math.random() > 0.3;
-      setPartB(isMatch ? 'SET-A-002' : 'SET-B-002');
+
+    const html5QrCode = new Html5Qrcode("reader-hidden-split");
+
+    try {
+      const decodedText = await html5QrCode.scanFile(file, true);
+      handleScan(decodedText);
+    } catch (err) {
+      console.error("Error scanning file", err);
+      toast.error("Could not read QR code");
+    } finally {
       setScanning(false);
-      setResult(isMatch ? 'match' : 'mismatch');
-    }, 1500);
+      html5QrCode.clear();
+      if (fileInputRef.current) fileInputRef.current.value = '';
+    }
+  };
+
+  const handleScan = async (rawCode: string) => {
+    try {
+      // Clean up code URL if needed
+      let code = rawCode;
+      if (rawCode.includes('/view-tool/')) {
+        code = rawCode.split('/view-tool/')[1];
+      }
+
+      const response = await api.get(`/tools/qr/${code}`);
+      const tool = response.data;
+
+      if (activeScan === 'A') {
+        setPartA(tool.qr_code);
+        setPartADetails(tool); // Save full object
+        setPartAStatus(tool.status || 'usable');
+        setStep(2);
+        toast.success("Part A Scanned");
+      } else if (activeScan === 'B') {
+        setPartB(tool.qr_code);
+        setPartBDesc(tool.description);
+        setPartBStatus(tool.status || 'usable');
+
+        // Compare Logic - Comprehensive Check
+        const matchDesc = partADetails.description.toLowerCase() === tool.description.toLowerCase();
+        const matchMake = (partADetails.make || '').toLowerCase() === (tool.make || '').toLowerCase();
+        const matchCapacity = (partADetails.capacity || '').toLowerCase() === (tool.capacity || '').toLowerCase();
+        const matchSwl = (partADetails.safe_working_load || '').toLowerCase() === (tool.safe_working_load || '').toLowerCase();
+        const matchLocation = (partADetails.current_site || '').toLowerCase() === (tool.current_site || '').toLowerCase();
+
+        const isExactMatch = matchDesc && matchMake && matchCapacity && matchSwl && matchLocation;
+
+        if (!isExactMatch) {
+          setResult('mismatch');
+        } else {
+          // Details match, check status
+          const isAMatchStatus = partAStatus === 'usable';
+          const isBMatchStatus = (tool.status || 'usable') === 'usable';
+
+          if (isAMatchStatus && isBMatchStatus) {
+            setResult('match');
+          } else {
+            setResult('mixed_status');
+          }
+        }
+      }
+
+    } catch (error) {
+      console.error(error);
+      toast.error("Invalid QR or Tool not found");
+    }
   };
 
   const reset = () => {
     setStep(1);
     setPartA('');
     setPartB('');
+    setPartADetails(null);
+    setPartBDesc('');
+    setPartAStatus('usable');
+    setPartBStatus('usable');
     setResult(null);
+    setActiveScan(null);
   };
 
   if (result) {
     const isMatch = result === 'match';
+    const isMixed = result === 'mixed_status';
+
+    let bgColor = 'bg-[#DC2626]'; // Default red
+    if (isMatch) bgColor = 'bg-[#16A34A]';
+    if (isMixed) bgColor = 'bg-[#CA8A04]'; // Yellow/Orange for mixed
+
     return (
       <div className="min-h-[calc(100vh-8rem)] flex items-center justify-center p-4">
-        <div 
-          className={`max-w-2xl w-full rounded-2xl p-12 text-center space-y-8 ${
-            isMatch ? 'bg-[#16A34A]' : 'bg-[#DC2626]'
-          }`}
+        {/* Hidden div for scanner */}
+        <div id="reader-hidden-split" className="hidden"></div>
+
+        <div
+          className={`max-w-2xl w-full rounded-2xl p-12 text-center space-y-8 ${bgColor}`}
         >
           {isMatch ? (
             <CheckCircle className="w-32 h-32 text-white mx-auto animate-bounce" />
+          ) : isMixed ? (
+            <div className="relative w-32 h-32 mx-auto">
+              <XCircle className="w-32 h-32 text-white animate-pulse" />
+            </div>
           ) : (
             <XCircle className="w-32 h-32 text-white mx-auto animate-pulse" />
           )}
-          
+
           <div className="text-white space-y-4">
             <h1 className="text-5xl font-bold">
-              {isMatch ? 'CORRECT COMBINATION' : 'WRONG COMBINATION'}
+              {isMatch ? 'CORRECT COMBINATION' : isMixed ? 'STATUS WARNING' : 'WRONG COMBINATION'}
             </h1>
             <p className="text-2xl opacity-90">
-              {isMatch ? 'Safe to use - Parts matched successfully' : 'Do not use - Parts do not match'}
+              {isMatch ? 'Safe to use - Parts matched successfully'
+                : isMixed ? 'Tools Match but Status Issue Detected'
+                  : 'Do not use - Parts do not match'}
             </p>
           </div>
 
           <div className="bg-white bg-opacity-20 backdrop-blur-sm rounded-xl p-8 space-y-6">
             <div className="grid grid-cols-2 gap-6 text-white text-left">
-              <div>
-                <p className="text-sm opacity-75 mb-1">Part A ID</p>
-                <p className="text-2xl font-mono font-semibold">{partA}</p>
+              <div className={`p-4 rounded-lg ${partAStatus !== 'usable' ? 'bg-red-500/50' : ''}`}>
+                <p className="text-sm opacity-75 mb-1">Part A {partAStatus !== 'usable' && '(SCRAP)'}</p>
+                <div className="flex items-center gap-2">
+                  <p className="font-medium text-lg capitalize">{partADetails?.description}</p>
+                  {partAStatus === 'usable' ? <CheckCircle className="w-4 h-4 text-green-300" /> : <XCircle className="w-4 h-4 text-red-200" />}
+                </div>
+                <p className="font-mono text-sm opacity-70">{partA}</p>
               </div>
-              <div>
-                <p className="text-sm opacity-75 mb-1">Part B ID</p>
-                <p className="text-2xl font-mono font-semibold">{partB}</p>
+              <div className={`p-4 rounded-lg ${partBStatus !== 'usable' ? 'bg-red-500/50' : ''}`}>
+                <p className="text-sm opacity-75 mb-1">Part B {partBStatus !== 'usable' && '(SCRAP)'}</p>
+                <div className="flex items-center gap-2">
+                  <p className="font-medium text-lg capitalize">{partBDesc}</p>
+                  {partBStatus === 'usable' ? <CheckCircle className="w-4 h-4 text-green-300" /> : <XCircle className="w-4 h-4 text-red-200" />}
+                </div>
+                <p className="font-mono text-sm opacity-70">{partB}</p>
               </div>
             </div>
 
-            {!isMatch && (
+            {isMixed && (
               <div className="border-t border-white border-opacity-30 pt-6">
                 <div className="text-white text-center space-y-2">
-                  <p className="text-xl font-medium">Mismatch Reason</p>
-                  <p className="text-lg opacity-90">Parts belong to different tool sets</p>
-                  <p className="text-base opacity-75">Part A: Tool Set A | Part B: Tool Set B</p>
+                  <p className="text-xl font-bold">Action Required</p>
+                  <p className="text-lg">
+                    Use <span className="font-bold underline">{partAStatus === 'usable' ? 'Part A' : 'Part B'}</span> only.
+                  </p>
+                  <p className="text-base opacity-90">
+                    Discard {partAStatus !== 'usable' ? 'Part A' : 'Part B'} ({partAStatus !== 'usable' ? partA : partB}) immediately.
+                  </p>
                 </div>
               </div>
             )}
 
-            {isMatch && (
+            {!isMatch && !isMixed && (
               <div className="border-t border-white border-opacity-30 pt-6">
                 <div className="text-white text-center space-y-2">
-                  <p className="text-xl font-medium">Tool Set ID</p>
-                  <p className="text-3xl font-bold font-mono">SET-A</p>
-                  <p className="text-lg opacity-90">Wire Rope Sling Set - 10T</p>
+                  <p className="text-xl font-medium">Mismatch Reason</p>
+                  <p className="text-lg opacity-90">Parts are different tools</p>
+                  <p className="text-base opacity-75">{partADetails?.description} vs {partBDesc}</p>
                 </div>
               </div>
             )}
           </div>
 
-          <Button 
-            size="lg" 
+          <Button
+            size="lg"
             variant="secondary"
             className="text-lg px-12 py-6"
             onClick={reset}
@@ -110,9 +209,21 @@ const SplitToolMatching = () => {
   return (
     <div className="min-h-[calc(100vh-8rem)] flex items-center justify-center p-4">
       <div className="w-full max-w-4xl">
+        {/* Hidden div for scanner */}
+        <div id="reader-hidden-split" className="hidden"></div>
+        {/* Hidden File Input */}
+        <input
+          type="file"
+          accept="image/*"
+          capture="environment"
+          ref={fileInputRef}
+          onChange={handleFileUpload}
+          className="hidden"
+        />
+
         <div className="text-center mb-8">
           <h1 className="text-4xl font-semibold text-[#0F172A] mb-2">Split Tool Matching</h1>
-          <p className="text-lg text-gray-500">Verify that tool parts belong together</p>
+          <p className="text-lg text-gray-500">Scan two parts to verify they belong together</p>
         </div>
 
         <div className="grid grid-cols-1 md:grid-cols-3 gap-6 items-center">
@@ -126,13 +237,15 @@ const SplitToolMatching = () => {
                 <div className="text-center">
                   <h2 className="text-2xl font-semibold mb-2">Part A</h2>
                   {partA && (
-                    <p className="font-mono text-lg text-[#16A34A] font-semibold">{partA}</p>
+                    <div className="space-y-1">
+                      <p className="text-lg font-medium capitalize">{partADetails?.description}</p>
+                      <p className="font-mono text-sm text-[#16A34A]">{partA}</p>
+                    </div>
                   )}
                 </div>
                 {step === 1 && (
-                  <div className={`w-48 h-48 border-4 border-dashed rounded-lg flex items-center justify-center ${
-                    scanning ? 'border-[#1E3A8A] animate-pulse' : 'border-gray-300'
-                  }`}>
+                  <div className={`w-48 h-48 border-4 border-dashed rounded-lg flex items-center justify-center ${scanning ? 'border-[#1E3A8A] animate-pulse' : 'border-gray-300'
+                    }`}>
                     {scanning ? (
                       <div className="w-16 h-16 border-4 border-[#1E3A8A] border-t-transparent rounded-full animate-spin"></div>
                     ) : (
@@ -143,11 +256,11 @@ const SplitToolMatching = () => {
                 {step === 1 && (
                   <Button
                     className="bg-[#1E3A8A] hover:bg-[#1E3A8A]/90"
-                    onClick={simulateScanPartA}
+                    onClick={() => triggerCamera('A')}
                     disabled={scanning}
                   >
-                    <QrCode className="w-4 h-4 mr-2" />
-                    {scanning ? 'Scanning...' : 'Scan Part A'}
+                    <Camera className="w-4 h-4 mr-2" />
+                    {scanning ? 'Scanning...' : 'Scan with Google Lens'}
                   </Button>
                 )}
                 {step >= 2 && (
@@ -175,13 +288,15 @@ const SplitToolMatching = () => {
                 <div className="text-center">
                   <h2 className="text-2xl font-semibold mb-2">Part B</h2>
                   {partB && (
-                    <p className="font-mono text-lg text-[#16A34A] font-semibold">{partB}</p>
+                    <div className="space-y-1">
+                      <p className="text-lg font-medium capitalize">{partBDesc}</p>
+                      <p className="font-mono text-sm text-[#16A34A]">{partB}</p>
+                    </div>
                   )}
                 </div>
                 {step === 2 && (
-                  <div className={`w-48 h-48 border-4 border-dashed rounded-lg flex items-center justify-center ${
-                    scanning ? 'border-[#1E3A8A] animate-pulse' : 'border-gray-300'
-                  }`}>
+                  <div className={`w-48 h-48 border-4 border-dashed rounded-lg flex items-center justify-center ${scanning ? 'border-[#1E3A8A] animate-pulse' : 'border-gray-300'
+                    }`}>
                     {scanning ? (
                       <div className="w-16 h-16 border-4 border-[#1E3A8A] border-t-transparent rounded-full animate-spin"></div>
                     ) : (
@@ -192,11 +307,11 @@ const SplitToolMatching = () => {
                 {step === 2 && (
                   <Button
                     className="bg-[#1E3A8A] hover:bg-[#1E3A8A]/90"
-                    onClick={simulateScanPartB}
+                    onClick={() => triggerCamera('B')}
                     disabled={scanning}
                   >
-                    <QrCode className="w-4 h-4 mr-2" />
-                    {scanning ? 'Scanning...' : 'Scan Part B'}
+                    <Camera className="w-4 h-4 mr-2" />
+                    {scanning ? 'Scanning...' : 'Scan with Google Lens'}
                   </Button>
                 )}
                 {step < 2 && (

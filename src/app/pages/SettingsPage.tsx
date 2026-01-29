@@ -6,10 +6,10 @@ import { Label } from '../components/ui/label';
 import { Switch } from '../components/ui/switch';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '../components/ui/tabs';
 import { Separator } from '../components/ui/separator';
-import { 
-  Building2, 
-  Bell, 
-  Shield, 
+import {
+  Building2,
+  Bell,
+  Shield,
   Database,
   Mail,
   Save,
@@ -113,8 +113,8 @@ const SettingsPage = () => {
                 </div>
                 <Switch
                   checked={notifications.email}
-                  onCheckedChange={(checked) => 
-                    setNotifications({...notifications, email: checked})
+                  onCheckedChange={(checked) =>
+                    setNotifications({ ...notifications, email: checked })
                   }
                 />
               </div>
@@ -126,8 +126,8 @@ const SettingsPage = () => {
                 </div>
                 <Switch
                   checked={notifications.push}
-                  onCheckedChange={(checked) => 
-                    setNotifications({...notifications, push: checked})
+                  onCheckedChange={(checked) =>
+                    setNotifications({ ...notifications, push: checked })
                   }
                 />
               </div>
@@ -139,8 +139,8 @@ const SettingsPage = () => {
                 </div>
                 <Switch
                   checked={notifications.expiry}
-                  onCheckedChange={(checked) => 
-                    setNotifications({...notifications, expiry: checked})
+                  onCheckedChange={(checked) =>
+                    setNotifications({ ...notifications, expiry: checked })
                   }
                 />
               </div>
@@ -152,8 +152,8 @@ const SettingsPage = () => {
                 </div>
                 <Switch
                   checked={notifications.inspection}
-                  onCheckedChange={(checked) => 
-                    setNotifications({...notifications, inspection: checked})
+                  onCheckedChange={(checked) =>
+                    setNotifications({ ...notifications, inspection: checked })
                   }
                 />
               </div>

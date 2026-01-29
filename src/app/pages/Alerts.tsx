@@ -2,10 +2,10 @@ import { Card, CardContent, CardHeader, CardTitle } from '../components/ui/card'
 import { Button } from '../components/ui/button';
 import { Badge } from '../components/ui/badge';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '../components/ui/tabs';
-import { 
-  AlertTriangle, 
-  Clock, 
-  Wrench, 
+import {
+  AlertTriangle,
+  Clock,
+  Wrench,
   CheckCircle,
   XCircle,
   Calendar,
@@ -14,99 +14,57 @@ import {
 } from 'lucide-react';
 import { toast } from 'sonner';
 
+import { useState, useEffect } from 'react';
+import api from '../services/api';
+
+// ... imports
+
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+  DialogDescription,
+  DialogFooter,
+} from "../components/ui/dialog";
+
 const Alerts = () => {
-  const criticalAlerts = [
-    {
-      id: 1,
-      type: 'expired',
-      severity: 'critical',
-      title: 'Tool Expired - Immediate Action Required',
-      tool: 'Wire Rope Sling 8T',
-      toolId: 'T067',
-      site: 'Site D',
-      message: 'This tool has expired and must be removed from service immediately',
-      date: '2024-12-27',
-      time: '10:30 AM',
-    },
-    {
-      id: 2,
-      type: 'inspection-overdue',
-      severity: 'critical',
-      title: 'Inspection Overdue',
-      tool: 'Hydraulic Jack 15T',
-      toolId: 'T089',
-      site: 'Site B',
-      message: 'Inspection is 15 days overdue. Tool should not be used until inspected',
-      date: '2024-12-27',
-      time: '09:15 AM',
-    },
-  ];
+  const [alerts, setAlerts] = useState<any[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [selectedAlert, setSelectedAlert] = useState<any>(null);
 
-  const warningAlerts = [
-    {
-      id: 3,
-      type: 'expiring-soon',
-      severity: 'warning',
-      title: 'Tool Expiring Soon',
-      tool: 'Chain Hoist 5T',
-      toolId: 'T001',
-      site: 'Site B',
-      message: 'Tool certification expires in 10 days. Schedule inspection immediately',
-      date: '2024-12-27',
-      time: '08:45 AM',
-    },
-    {
-      id: 4,
-      type: 'low-usability',
-      severity: 'warning',
-      title: 'Low Usability Percentage',
-      tool: 'Wire Rope 3T',
-      toolId: 'T023',
-      site: 'Site E',
-      message: 'Usability dropped to 65%. Consider replacement soon',
-      date: '2024-12-26',
-      time: '03:20 PM',
-    },
-    {
-      id: 5,
-      type: 'maintenance-due',
-      severity: 'warning',
-      title: 'Maintenance Due',
-      tool: 'Lifting Beam 10T',
-      toolId: 'T034',
-      site: 'Site A',
-      message: 'Scheduled maintenance is due within 5 days',
-      date: '2024-12-26',
-      time: '11:00 AM',
-    },
-  ];
+  const fetchAlerts = async () => {
+    try {
+      const response = await api.get('/alerts');
+      setAlerts(response.data);
+    } catch (error) {
+      console.error("Failed to fetch alerts", error);
+      toast.error("Failed to load alerts");
+    } finally {
+      setLoading(false);
+    }
+  };
 
-  const infoAlerts = [
-    {
-      id: 6,
-      type: 'new-tool',
-      severity: 'info',
-      title: 'New Tool Added',
-      tool: 'Shackle 12T',
-      toolId: 'T156',
-      site: 'Site C',
-      message: 'New tool has been added to the inventory',
-      date: '2024-12-26',
-      time: '02:30 PM',
-    },
-    {
-      id: 7,
-      type: 'transfer',
-      severity: 'info',
-      title: 'Tool Transfer Completed',
-      tool: 'Chain Hoist 8T',
-      toolId: 'T045',
-      site: 'Site F',
-      message: 'Tool successfully transferred from Site C to Site F',
-      date: '2024-12-25',
-      time: '04:15 PM',
-    },
-  ];
+  useEffect(() => {
+    fetchAlerts();
+  }, []);
+
+  const criticalAlerts = alerts.filter(a => a.severity === 'critical');
+  const warningAlerts = alerts.filter(a => a.severity === 'warning');
+  const infoAlerts = alerts.filter(a => a.severity === 'info');
+
+  // Format date/time helper if needed, assuming backend returns ISO date
+  const formatDate = (dateString: string) => {
+    if (!dateString) return '-';
+    const d = new Date(dateString);
+    return d.toLocaleDateString();
+  };
+
+  const formatTime = (dateString: string) => {
+    if (!dateString) return '-';
+    const d = new Date(dateString);
+    return d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+  };
 
   const getSeverityColor = (severity: string) => {
     switch (severity) {
@@ -159,8 +117,8 @@ const Alerts = () => {
     toast.success('All alerts marked as read');
   };
 
-  const handleViewDetails = (id: number) => {
-    toast.info('Opening alert details...');
+  const handleViewDetails = (alert: any) => {
+    setSelectedAlert(alert);
   };
 
   const AlertCard = ({ alert }: { alert: any }) => (
@@ -180,40 +138,38 @@ const Alerts = () => {
                 <p className="text-sm text-gray-600">{alert.message}</p>
               </div>
             </div>
-            
+
             <div className="grid grid-cols-1 md:grid-cols-3 gap-3 text-sm">
               <div className="flex items-center gap-2 text-gray-600">
                 <Wrench className="w-4 h-4" />
-                <span className="font-mono">{alert.toolId}</span>
-                <span>-</span>
-                <span>{alert.tool}</span>
+                <span className="font-mono">{alert.tool_id ? `Tool #${alert.tool_id}` : 'System'}</span>
               </div>
               <div className="flex items-center gap-2 text-gray-600">
                 <MapPin className="w-4 h-4" />
-                <span>{alert.site}</span>
+                <span>{alert.site || 'N/A'}</span>
               </div>
               <div className="flex items-center gap-2 text-gray-600">
                 <Clock className="w-4 h-4" />
-                <span>{alert.time}</span>
+                <span>{formatDate(alert.date)} {formatTime(alert.date)}</span>
               </div>
             </div>
 
             <div className="flex items-center gap-2 pt-2 border-t">
-              <Button 
-                size="sm" 
+              <Button
+                size="sm"
                 variant="outline"
                 onClick={() => handleMarkAsRead(alert.id)}
               >
                 Mark as Read
               </Button>
-              <Button 
-                size="sm" 
+              <Button
+                size="sm"
                 className="bg-[#1E3A8A]"
                 onClick={() => handleResolve(alert.id)}
               >
                 Resolve
               </Button>
-              <Button size="sm" variant="ghost" onClick={() => handleViewDetails(alert.id)}>
+              <Button size="sm" variant="ghost" onClick={() => handleViewDetails(alert)}>
                 View Details
               </Button>
             </div>
@@ -299,20 +255,73 @@ const Alerts = () => {
           {criticalAlerts.map((alert) => (
             <AlertCard key={alert.id} alert={alert} />
           ))}
+          {criticalAlerts.length === 0 && <p className="text-gray-500 text-sm py-4">No critical alerts.</p>}
         </TabsContent>
 
         <TabsContent value="warning" className="space-y-4">
           {warningAlerts.map((alert) => (
             <AlertCard key={alert.id} alert={alert} />
           ))}
+          {warningAlerts.length === 0 && <p className="text-gray-500 text-sm py-4">No warning alerts.</p>}
         </TabsContent>
 
         <TabsContent value="info" className="space-y-4">
           {infoAlerts.map((alert) => (
             <AlertCard key={alert.id} alert={alert} />
           ))}
+          {infoAlerts.length === 0 && <p className="text-gray-500 text-sm py-4">No info alerts.</p>}
         </TabsContent>
       </Tabs>
+
+      {/* Details Dialog */}
+      <Dialog open={!!selectedAlert} onOpenChange={(open) => !open && setSelectedAlert(null)}>
+        <DialogContent className="sm:max-w-[500px]">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2 text-xl">
+              {selectedAlert && getSeverityIcon(selectedAlert.severity)}
+              {selectedAlert?.title}
+            </DialogTitle>
+            <DialogDescription>
+              Details of the triggered alert.
+            </DialogDescription>
+          </DialogHeader>
+
+          {selectedAlert && (
+            <div className="space-y-4 py-4">
+              <div className="p-4 rounded-lg bg-gray-50 border space-y-3">
+                <div className="flex justify-between items-start">
+                  <h4 className="font-semibold text-gray-900">Message</h4>
+                  {getSeverityBadge(selectedAlert.severity)}
+                </div>
+                <p className="text-gray-700 leading-relaxed">{selectedAlert.message}</p>
+              </div>
+
+              <div className="grid grid-cols-2 gap-4 text-sm">
+                <div>
+                  <label className="text-gray-500 text-xs">Tool ID</label>
+                  <p className="font-medium text-gray-900">{selectedAlert.tool_id ? `Tool #${selectedAlert.tool_id}` : 'System'}</p>
+                </div>
+                <div>
+                  <label className="text-gray-500 text-xs">Site Location</label>
+                  <p className="font-medium text-gray-900">{selectedAlert.site || 'N/A'}</p>
+                </div>
+                <div>
+                  <label className="text-gray-500 text-xs">Date</label>
+                  <p className="font-medium text-gray-900">{formatDate(selectedAlert.date)}</p>
+                </div>
+                <div>
+                  <label className="text-gray-500 text-xs">Time</label>
+                  <p className="font-medium text-gray-900">{formatTime(selectedAlert.date)}</p>
+                </div>
+              </div>
+            </div>
+          )}
+
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setSelectedAlert(null)}>Close</Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 };

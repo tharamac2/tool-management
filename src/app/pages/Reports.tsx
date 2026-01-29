@@ -1,4 +1,5 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
+import api from '../services/api';
 import { Card, CardContent, CardHeader, CardTitle } from '../components/ui/card';
 import { Button } from '../components/ui/button';
 import { Input } from '../components/ui/input';
@@ -17,17 +18,26 @@ const Reports = () => {
   const [reportType, setReportType] = useState('all');
   const [searchQuery, setSearchQuery] = useState('');
 
-  const toolInventoryData = [
-    { id: 'T001', description: 'Chain Hoist 5T', site: 'Site B', status: 'Usable', lastInspection: '2024-11-20', expiry: '2025-11-20' },
-    { id: 'T002', description: 'Wire Rope Sling 10T', site: 'Site E', status: 'Usable', lastInspection: '2024-10-15', expiry: '2025-01-15' },
-    { id: 'T003', description: 'Hydraulic Jack 20T', site: 'Site H', status: 'Scrap', lastInspection: '2024-12-01', expiry: '2024-12-01' },
-  ];
+  const [toolInventoryData, setToolInventoryData] = useState<any[]>([]);
+  const [inspectionHistory, setInspectionHistory] = useState<any[]>([]);
 
-  const inspectionHistory = [
-    { toolId: 'T001', description: 'Chain Hoist 5T', inspector: 'John Doe', date: '2024-11-20', result: 'Pass', usability: '95%' },
-    { toolId: 'T034', description: 'Lifting Beam 10T', inspector: 'Jane Smith', date: '2024-12-19', result: 'Conditional', usability: '75%' },
-    { toolId: 'T089', description: 'Hydraulic Jack 20T', inspector: 'John Doe', date: '2024-12-18', result: 'Pass', usability: '90%' },
-  ];
+  // Fetch real data
+  useEffect(() => {
+    const fetchData = async () => {
+      try {
+        const [toolsRes, inspectionsRes] = await Promise.all([
+          api.get('/tools/'),
+          api.get('/inspections/?limit=100')
+        ]);
+        setToolInventoryData(toolsRes.data);
+        setInspectionHistory(inspectionsRes.data);
+      } catch (error) {
+        console.error("Error fetching reports data", error);
+        toast.error("Failed to load reports data");
+      }
+    };
+    fetchData();
+  }, []);
 
   const maintenanceRecords = [
     { toolId: 'T023', description: 'Wire Rope 3T', type: 'Repair', date: '2024-11-15', cost: '$250', status: 'Completed' },
@@ -58,16 +68,19 @@ const Reports = () => {
   };
 
   const getStatusBadge = (status: string) => {
-    switch (status) {
-      case 'Usable':
-      case 'Pass':
-      case 'Completed':
+    if (!status) return <Badge variant="secondary">Unknown</Badge>;
+    const lowerStatus = status.toLowerCase();
+    switch (lowerStatus) {
+      case 'usable':
+      case 'pass':
+      case 'completed':
         return <Badge className="bg-[#16A34A]">{status}</Badge>;
-      case 'Conditional':
-      case 'In Progress':
+      case 'conditional':
+      case 'in progress':
         return <Badge className="bg-[#F59E0B]">{status}</Badge>;
-      case 'Scrap':
-      case 'Fail':
+      case 'scrap':
+      case 'fail':
+      case 'not-usable':
         return <Badge className="bg-[#DC2626]">{status}</Badge>;
       default:
         return <Badge variant="secondary">{status}</Badge>;
@@ -178,7 +191,7 @@ const Reports = () => {
               <Table>
                 <TableHeader>
                   <TableRow>
-                    <TableHead>Tool ID</TableHead>
+                    <TableHead>Tool Code</TableHead>
                     <TableHead>Description</TableHead>
                     <TableHead>Site</TableHead>
                     <TableHead>Status</TableHead>
@@ -189,14 +202,19 @@ const Reports = () => {
                 <TableBody>
                   {toolInventoryData.map((tool) => (
                     <TableRow key={tool.id}>
-                      <TableCell className="font-mono">{tool.id}</TableCell>
+                      <TableCell className="font-mono">{tool.qr_code}</TableCell>
                       <TableCell>{tool.description}</TableCell>
-                      <TableCell>{tool.site}</TableCell>
+                      <TableCell>{tool.current_site || '-'}</TableCell>
                       <TableCell>{getStatusBadge(tool.status)}</TableCell>
-                      <TableCell>{new Date(tool.lastInspection).toLocaleDateString()}</TableCell>
-                      <TableCell>{new Date(tool.expiry).toLocaleDateString()}</TableCell>
+                      <TableCell>{tool.last_inspection_date ? new Date(tool.last_inspection_date).toLocaleDateString() : '-'}</TableCell>
+                      <TableCell>{tool.expiry_date ? new Date(tool.expiry_date).toLocaleDateString() : '-'}</TableCell>
                     </TableRow>
                   ))}
+                  {toolInventoryData.length === 0 && (
+                    <TableRow>
+                      <TableCell colSpan={6} className="text-center py-4">No tools found</TableCell>
+                    </TableRow>
+                  )}
                 </TableBody>
               </Table>
             </CardContent>
@@ -213,9 +231,9 @@ const Reports = () => {
               <Table>
                 <TableHeader>
                   <TableRow>
-                    <TableHead>Tool ID</TableHead>
+                    <TableHead>Tool Code</TableHead>
                     <TableHead>Description</TableHead>
-                    <TableHead>Inspector</TableHead>
+                    {/*  <TableHead>Inspector</TableHead>  Backend needs to return inspector name */}
                     <TableHead>Date</TableHead>
                     <TableHead>Result</TableHead>
                     <TableHead>Usability</TableHead>
@@ -224,14 +242,21 @@ const Reports = () => {
                 <TableBody>
                   {inspectionHistory.map((inspection, index) => (
                     <TableRow key={index}>
-                      <TableCell className="font-mono">{inspection.toolId}</TableCell>
-                      <TableCell>{inspection.description}</TableCell>
-                      <TableCell>{inspection.inspector}</TableCell>
+                      <TableCell className="font-mono">
+                        {inspection.tool ? inspection.tool.qr_code : `ID: ${inspection.tool_id}`}
+                      </TableCell>
+                      <TableCell>{inspection.tool ? inspection.tool.description : '-'}</TableCell>
+                      {/* <TableCell>{inspection.inspector_id}</TableCell> */}
                       <TableCell>{new Date(inspection.date).toLocaleDateString()}</TableCell>
                       <TableCell>{getStatusBadge(inspection.result)}</TableCell>
-                      <TableCell>{inspection.usability}</TableCell>
+                      <TableCell>{inspection.usability_percentage ? `${inspection.usability_percentage}%` : '-'}</TableCell>
                     </TableRow>
                   ))}
+                  {inspectionHistory.length === 0 && (
+                    <TableRow>
+                      <TableCell colSpan={6} className="text-center py-4">No inspections found</TableCell>
+                    </TableRow>
+                  )}
                 </TableBody>
               </Table>
             </CardContent>

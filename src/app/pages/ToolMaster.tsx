@@ -1,4 +1,5 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
+import api from '../services/api';
 import { Card, CardContent, CardHeader, CardTitle } from '../components/ui/card';
 import { Input } from '../components/ui/input';
 import { Label } from '../components/ui/label';
@@ -6,12 +7,45 @@ import { Button } from '../components/ui/button';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '../components/ui/select';
 import { RadioGroup, RadioGroupItem } from '../components/ui/radio-group';
 import { Separator } from '../components/ui/separator';
-import { QRCodeSVG } from 'qrcode.react';
-import { Download, Printer, Save } from 'lucide-react';
+import { QRCodeCanvas } from 'qrcode.react';
+import { Download, Printer, Save, Edit } from 'lucide-react';
 import { toast } from 'sonner';
 import { DatePicker } from '../components/ui/date-picker';
+import { Html5Qrcode } from 'html5-qrcode';
+import { useRef } from 'react';
 
 const ToolMaster = () => {
+  const [savedTools, setSavedTools] = useState<any[]>([]);
+  const [baseUrl, setBaseUrl] = useState(window.location.origin);
+
+  useEffect(() => {
+    const fetchIp = async () => {
+      try {
+        const res = await api.get('/system/ip');
+        if (res.data.ip && res.data.ip !== 'localhost') {
+          // dynamic port
+          setBaseUrl(`http://${res.data.ip}:${window.location.port}`);
+        }
+      } catch (e) {
+        console.warn("Could not fetch system IP, defaulting to origin");
+      }
+    };
+    fetchIp();
+  }, []);
+
+  const fetchTools = async () => {
+    try {
+      const response = await api.get('/tools/'); // Ensure trailing slash if required by backend
+      setSavedTools(response.data);
+    } catch (error) {
+      console.error("Failed to fetch tools", error);
+    }
+  };
+
+  useEffect(() => {
+    fetchTools();
+  }, []);
+
   const [toolData, setToolData] = useState({
     description: '',
     make: '',
@@ -30,7 +64,10 @@ const ToolMaster = () => {
     nextSite: '',
   });
 
+
   const [qrCode, setQrCode] = useState('');
+
+  // ... (useState definitions)
 
   const handleInputChange = (field: string, value: string) => {
     setToolData(prev => ({ ...prev, [field]: value }));
@@ -43,20 +80,238 @@ const ToolMaster = () => {
   const generateQRCode = () => {
     const code = `TOOL-${Date.now()}`;
     setQrCode(code);
+    handleInputChange('qrCode', code); // Ensure this is saved
     toast.success('QR Code generated successfully');
   };
 
-  const handleSave = () => {
-    toast.success('Tool data saved successfully');
+  const [editingToolId, setEditingToolId] = useState<number | null>(null);
+
+  // ... (existing useState)
+
+  const generateSmartId = (description: string) => {
+    // 1. Get first 2 letters, default to 'TL' if missing
+    let prefix = 'TL';
+    if (description && description.length >= 2) {
+      prefix = description.substring(0, 2).toUpperCase().replace(/[^A-Z0-9]/g, 'X');
+    }
+
+    // 2. Generate random alphanumeric (3-5 chars)
+    // We'll use 4 chars to make total 6 chars (middle of 5-7 range)
+    const randomPart = Math.random().toString(36).substring(2, 6).toUpperCase();
+
+    return `${prefix}${randomPart}`;
+  };
+
+  const handleSave = async () => {
+    try {
+      let finalQrCode = qrCode;
+      if (!finalQrCode) {
+        // Generate Smart ID
+        finalQrCode = generateSmartId(toolData.description);
+        setQrCode(finalQrCode);
+        handleInputChange('qrCode', finalQrCode);
+        toast.info(`Generated QR Code: ${finalQrCode}`);
+      }
+
+      const payload = {
+        ...toolData,
+        qr_code: finalQrCode, // Use the smart generated code
+        safe_working_load: toolData.safeWorkingLoad,
+        purchaser_name: toolData.purchaserName,
+        purchaser_contact: toolData.purchaserContact,
+        date_of_supply: toolData.dateOfSupply,
+        last_inspection_date: toolData.lastInspectionDate,
+        inspection_result: toolData.inspectionResult,
+        usability_percentage: toolData.usabilityPercentage ? parseFloat(toolData.usabilityPercentage) : null,
+        validity_period: toolData.validityPeriod ? parseInt(toolData.validityPeriod) : null,
+        subcontractor_name: toolData.subcontractorName,
+        previous_site: toolData.previousSite,
+        current_site: toolData.currentSite,
+        next_site: toolData.nextSite,
+        status: 'usable'
+      };
+
+      if (editingToolId) {
+        // Update existing tool
+        await api.patch(`/tools/${editingToolId}`, payload);
+        toast.success('Tool updated successfully');
+      } else {
+        // Create new tool
+        await api.post('/tools', payload);
+        toast.success('Tool saved to database successfully');
+      }
+
+      fetchTools();
+      if (!editingToolId) {
+        // Reset form only if creating new (optional, or keep logic to clear)
+      }
+    } catch (error) {
+      console.error(error);
+      toast.error('Failed to save tool');
+    }
   };
 
   const downloadQR = () => {
-    toast.success('QR Code downloaded');
+    const canvas = document.querySelector('#qr-code-wrapper canvas') as HTMLCanvasElement;
+    if (canvas) {
+      const pngUrl = canvas.toDataURL('image/png');
+      const downloadLink = document.createElement('a');
+      downloadLink.href = pngUrl;
+      downloadLink.download = `${qrCode || 'qrcode'}.png`;
+      document.body.appendChild(downloadLink);
+      downloadLink.click();
+      document.body.removeChild(downloadLink);
+      toast.success('QR Code downloaded successfully');
+    } else {
+      toast.error('Could not find QR Code to download');
+    }
   };
 
   const printQR = () => {
-    toast.success('Printing QR Code...');
+    const canvas = document.querySelector('#qr-code-wrapper canvas') as HTMLCanvasElement;
+    if (canvas) {
+      const pngUrl = canvas.toDataURL('image/png');
+      const printWindow = window.open('', '', 'width=600,height=600');
+      if (printWindow) {
+        printWindow.document.write(`
+          <html>
+            <head>
+              <title>Print QR Code</title>
+              <style>
+                body {
+                  display: flex;
+                  flex-direction: column;
+                  align-items: center;
+                  justify-content: center;
+                  height: 100vh;
+                  font-family: sans-serif;
+                }
+                img {
+                  max-width: 100%;
+                  height: auto;
+                }
+                .label {
+                  margin-top: 20px;
+                  font-size: 20px;
+                  font-weight: bold;
+                }
+              </style>
+            </head>
+            <body>
+              <img src="${pngUrl}" />
+              <div class="label">${qrCode}</div>
+              <script>
+                window.onload = function() {
+                  window.print();
+                  setTimeout(() => { window.close(); }, 500);
+                }
+              </script>
+            </body>
+          </html>
+        `);
+        printWindow.document.close();
+      }
+    } else {
+      toast.error('Could not find QR Code to print');
+    }
   };
+
+  const [isNewTool, setIsNewTool] = useState(true);
+  const [scanning, setScanning] = useState(false);
+  const fileInputRef = useRef<HTMLInputElement>(null);
+
+  const triggerScan = () => {
+    fileInputRef.current?.click();
+  };
+
+  const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    if (!e.target.files || e.target.files.length === 0) return;
+
+    const file = e.target.files[0];
+    setScanning(true);
+
+    const html5QrCode = new Html5Qrcode("reader-hidden-master");
+
+    try {
+      const decodedText = await html5QrCode.scanFile(file, true);
+
+      // Extract code if it is a URL
+      let code = decodedText;
+      if (decodedText.includes('/view-tool/')) {
+        const parts = decodedText.split('/view-tool/');
+        if (parts.length > 1) {
+          code = parts[1];
+        }
+      }
+
+      handleFetchToolByQR(code);
+    } catch (err) {
+      console.error("Error scanning file", err);
+      toast.error("Could not read QR code from image");
+    } finally {
+      setScanning(false);
+      html5QrCode.clear();
+    }
+  };
+
+  const handleFetchToolByQR = async (code: string) => {
+    try {
+      toast.info(`Fetching details for ${code}...`);
+      const response = await api.get(`/tools/qr/${code}`);
+      const tool = response.data;
+
+      setEditingToolId(tool.id); // Set ID for updates
+      setQrCode(tool.qr_code);
+      setToolData({
+        description: tool.description,
+        make: tool.make,
+        capacity: tool.capacity,
+        safeWorkingLoad: tool.safe_working_load,
+        purchaserName: tool.purchaser_name,
+        purchaserContact: tool.purchaser_contact,
+        dateOfSupply: tool.date_of_supply ? new Date(tool.date_of_supply) : undefined,
+        lastInspectionDate: tool.last_inspection_date ? new Date(tool.last_inspection_date) : undefined,
+        inspectionResult: 'usable', // Default to usable for new inspection entry
+        usabilityPercentage: tool.usability_percentage ? String(tool.usability_percentage) : '',
+        validityPeriod: tool.validity_period ? String(tool.validity_period) : '',
+        subcontractorName: tool.subcontractor_name,
+        previousSite: tool.previous_site,
+        currentSite: tool.current_site,
+        nextSite: tool.next_site,
+      });
+      toast.success("Tool details loaded!");
+    } catch (error) {
+      console.error(error);
+      toast.error("Tool not found in database");
+    }
+  };
+
+  const handleEditTool = (tool: any) => {
+    setIsNewTool(false);
+    setEditingToolId(tool.id);
+    setQrCode(tool.qr_code);
+    setToolData({
+      description: tool.description,
+      make: tool.make,
+      capacity: tool.capacity,
+      safeWorkingLoad: tool.safe_working_load,
+      purchaserName: tool.purchaser_name,
+      purchaserContact: tool.purchaser_contact,
+      dateOfSupply: tool.date_of_supply ? new Date(tool.date_of_supply) : undefined,
+      lastInspectionDate: tool.last_inspection_date ? new Date(tool.last_inspection_date) : undefined,
+      inspectionResult: tool.inspection_result || 'usable',
+      usabilityPercentage: tool.usability_percentage ? String(tool.usability_percentage) : '',
+      validityPeriod: tool.validity_period ? String(tool.validity_period) : '',
+      subcontractorName: tool.subcontractor_name,
+      previousSite: tool.previous_site,
+      currentSite: tool.current_site,
+      nextSite: tool.next_site,
+    });
+    window.scrollTo({ top: 0, behavior: 'smooth' });
+    toast.info("Editing tool: " + tool.qr_code);
+  };
+
+  // ... (existing handleInputChange, etc.)
 
   return (
     <div className="max-w-7xl mx-auto space-y-6">
@@ -65,7 +320,55 @@ const ToolMaster = () => {
           <h1 className="text-3xl font-semibold text-[#0F172A]">Tool Master Data Entry</h1>
           <p className="text-gray-500 mt-1">Add and manage tool information</p>
         </div>
+        <div className="flex items-center space-x-4 bg-white p-2 rounded-lg border shadow-sm">
+          <Label className="text-sm font-medium text-gray-600">Entry Mode:</Label>
+          <div className="flex items-center space-x-2">
+            <Button
+              variant={isNewTool ? "default" : "outline"}
+              size="sm"
+              onClick={() => {
+                setIsNewTool(true);
+                setEditingToolId(null);
+                setQrCode('');
+                // Optionally reset toolData here too
+              }}
+              className={isNewTool ? "bg-[#1E3A8A]" : ""}
+            >
+              New Tool
+            </Button>
+            <Button
+              variant={!isNewTool ? "default" : "outline"}
+              size="sm"
+              onClick={() => setIsNewTool(false)}
+              className={!isNewTool ? "bg-[#1E3A8A]" : ""}
+            >
+              Existing Tool
+            </Button>
+          </div>
+        </div>
       </div>
+
+      {!isNewTool && (
+        <div className="flex justify-end">
+          <div id="reader-hidden-master" className="hidden"></div>
+          <input
+            type="file"
+            accept="image/*"
+            capture="environment"
+            ref={fileInputRef}
+            onChange={handleFileUpload}
+            className="hidden"
+          />
+          <Button
+            variant="outline"
+            onClick={triggerScan}
+            className="border-dashed border-2 border-blue-300 text-blue-700 hover:bg-blue-50"
+            disabled={scanning}
+          >
+            {scanning ? "Scanning..." : "📷 Scan / Upload Existing QR to Autofill"}
+          </Button>
+        </div>
+      )}
 
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
         {/* Main Form */}
@@ -77,7 +380,7 @@ const ToolMaster = () => {
             </CardHeader>
             <CardContent className="grid grid-cols-1 md:grid-cols-2 gap-4">
               <div className="space-y-2">
-                <Label htmlFor="description">Tool Description <span className="text-red-600">*</span></Label>
+                <Label htmlFor="description">Tool Type <span className="text-red-600">*</span></Label>
                 <Select onValueChange={(value) => handleInputChange('description', value)} required>
                   <SelectTrigger>
                     <SelectValue placeholder="Select tool type" />
@@ -158,63 +461,65 @@ const ToolMaster = () => {
             </CardContent>
           </Card>
 
-          {/* Inspection Status */}
-          <Card>
-            <CardHeader>
-              <CardTitle>Inspection Status</CardTitle>
-            </CardHeader>
-            <CardContent className="space-y-4">
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                <div className="space-y-2">
-                  <Label htmlFor="lastInspection">Date of Last Inspection</Label>
-                  <DatePicker
-                    date={toolData.lastInspectionDate}
-                    onDateChange={(date) => handleDateChange('lastInspectionDate', date)}
-                  />
-                </div>
-              </div>
-              <div className="space-y-3">
-                <Label>Inspection Result</Label>
-                <RadioGroup 
-                  value={toolData.inspectionResult}
-                  onValueChange={(value) => handleInputChange('inspectionResult', value)}
-                >
-                  <div className="flex items-center space-x-2">
-                    <RadioGroupItem value="usable" id="usable" />
-                    <Label htmlFor="usable" className="font-normal cursor-pointer">Usable</Label>
-                  </div>
-                  <div className="flex items-center space-x-2">
-                    <RadioGroupItem value="not-usable" id="not-usable" />
-                    <Label htmlFor="not-usable" className="font-normal cursor-pointer">Not Usable</Label>
-                  </div>
-                </RadioGroup>
-              </div>
-              {toolData.inspectionResult === 'usable' && (
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-4 pt-4 border-t">
+          {/* Inspection Status - Only for Existing Tools */}
+          {!isNewTool && (
+            <Card>
+              <CardHeader>
+                <CardTitle>Inspection Status</CardTitle>
+              </CardHeader>
+              <CardContent className="space-y-4">
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                   <div className="space-y-2">
-                    <Label htmlFor="usability">Usability Percentage</Label>
-                    <Input
-                      id="usability"
-                      type="number"
-                      placeholder="e.g., 95"
-                      value={toolData.usabilityPercentage}
-                      onChange={(e) => handleInputChange('usabilityPercentage', e.target.value)}
-                    />
-                  </div>
-                  <div className="space-y-2">
-                    <Label htmlFor="validity">Validity Period (Years)</Label>
-                    <Input
-                      id="validity"
-                      type="number"
-                      placeholder="e.g., 1"
-                      value={toolData.validityPeriod}
-                      onChange={(e) => handleInputChange('validityPeriod', e.target.value)}
+                    <Label htmlFor="lastInspection">Date of Last Inspection</Label>
+                    <DatePicker
+                      date={toolData.lastInspectionDate}
+                      onDateChange={(date) => handleDateChange('lastInspectionDate', date)}
                     />
                   </div>
                 </div>
-              )}
-            </CardContent>
-          </Card>
+                <div className="space-y-3">
+                  <Label>Inspection Result</Label>
+                  <RadioGroup
+                    value={toolData.inspectionResult}
+                    onValueChange={(value) => handleInputChange('inspectionResult', value)}
+                  >
+                    <div className="flex items-center space-x-2">
+                      <RadioGroupItem value="usable" id="usable" />
+                      <Label htmlFor="usable" className="font-normal cursor-pointer">Usable</Label>
+                    </div>
+                    <div className="flex items-center space-x-2">
+                      <RadioGroupItem value="not-usable" id="not-usable" />
+                      <Label htmlFor="not-usable" className="font-normal cursor-pointer">Not Usable</Label>
+                    </div>
+                  </RadioGroup>
+                </div>
+                {toolData.inspectionResult === 'usable' && (
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4 pt-4 border-t">
+                    <div className="space-y-2">
+                      <Label htmlFor="usability">Usability Percentage</Label>
+                      <Input
+                        id="usability"
+                        type="number"
+                        placeholder="e.g., 95"
+                        value={toolData.usabilityPercentage}
+                        onChange={(e) => handleInputChange('usabilityPercentage', e.target.value)}
+                      />
+                    </div>
+                    <div className="space-y-2">
+                      <Label htmlFor="validity">Validity Period (Years)</Label>
+                      <Input
+                        id="validity"
+                        type="number"
+                        placeholder="e.g., 1"
+                        value={toolData.validityPeriod}
+                        onChange={(e) => handleInputChange('validityPeriod', e.target.value)}
+                      />
+                    </div>
+                  </div>
+                )}
+              </CardContent>
+            </Card>
+          )}
 
           {/* Site Movement */}
           <Card>
@@ -271,12 +576,17 @@ const ToolMaster = () => {
             <CardContent className="space-y-4">
               {qrCode ? (
                 <div className="flex flex-col items-center space-y-4">
-                  <div className="p-4 bg-white border-2 border-gray-200 rounded-lg">
-                    <QRCodeSVG value={qrCode} size={200} />
+                  <div className="p-4 bg-white border-2 border-gray-200 rounded-lg" id="qr-code-wrapper">
+                    <QRCodeCanvas
+                      value={`${baseUrl}/view-tool/${qrCode}`}
+                      size={200}
+                      level={"H"}
+                      includeMargin={true}
+                    />
                   </div>
                   <div className="text-center">
-                    <p className="text-sm text-gray-500">Tool ID</p>
-                    <p className="font-mono font-medium">{qrCode}</p>
+                    <p className="text-sm text-gray-500">Scan to View Details</p>
+                    <p className="font-mono font-medium text-xs text-gray-400">{qrCode}</p>
                   </div>
                   <div className="grid grid-cols-2 gap-2 w-full">
                     <Button variant="outline" size="sm" onClick={downloadQR}>
@@ -288,11 +598,14 @@ const ToolMaster = () => {
                       Print
                     </Button>
                   </div>
+                  <p className="text-xs text-center text-amber-600 bg-amber-50 p-2 rounded">
+                    Note: Ensure your mobile is on the same network and you are accessing this site via IP address for mobile scanning to work.
+                  </p>
                 </div>
               ) : (
                 <div className="text-center py-12">
-                  <p className="text-gray-400 mb-4">No QR code generated</p>
-                  <Button onClick={generateQRCode}>Generate QR Code</Button>
+                  <p className="text-gray-400 mb-4">QR Code will be generated automatically after saving the tool details.</p>
+                  <Button disabled variant="outline">Auto-Generated on Save</Button>
                 </div>
               )}
             </CardContent>
@@ -300,8 +613,100 @@ const ToolMaster = () => {
         </div>
       </div>
 
+      {/* SAVED TOOLS LIST */}
+      <div className="mt-12 mb-8">
+        <h2 className="text-2xl font-semibold text-[#0F172A] mb-6">Saved Tools Inventory</h2>
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+          {savedTools.map((tool) => (
+            <Card key={tool.id} className="overflow-hidden border shadow-sm hover:shadow-md transition-shadow">
+              <CardHeader className="bg-gray-50 pb-2">
+                <div className="flex justify-between items-start">
+                  <div>
+                    <CardTitle className="text-lg font-bold text-[#1E3A8A]">{tool.description}</CardTitle>
+                    <p className="text-xs font-mono text-gray-500 mt-1">{tool.qr_code}</p>
+                  </div>
+                  <div className={`px-2 py-1 rounded text-xs font-semibold capitalize ${tool.status === 'usable' ? 'bg-green-100 text-green-700' : 'bg-red-100 text-red-700'
+                    }`}>
+                    {tool.status}
+                  </div>
+                </div>
+              </CardHeader>
+              <CardContent className="pt-4">
+                <div className="grid grid-cols-2 gap-y-2 gap-x-4 text-sm">
+                  <div>
+                    <p className="text-gray-500 text-xs">Make</p>
+                    <p className="font-medium truncate" title={tool.make}>{tool.make}</p>
+                  </div>
+                  <div>
+                    <p className="text-gray-500 text-xs">Capacity</p>
+                    <p className="font-medium truncate" title={tool.capacity}>{tool.capacity}</p>
+                  </div>
+                  <div>
+                    <p className="text-gray-500 text-xs">SWL</p>
+                    <p className="font-medium truncate" title={tool.safe_working_load}>{tool.safe_working_load}</p>
+                  </div>
+                  <div>
+                    <p className="text-gray-500 text-xs">Site</p>
+                    <p className="font-medium truncate" title={tool.current_site}>{tool.current_site || '-'}</p>
+                  </div>
+                </div>
+
+                <div className="flex flex-col items-center border-t pt-4 bg-gray-50/50 -mx-6 -mb-6 pb-8 mt-4 px-6">
+                  <div className="bg-white p-2 rounded shadow-sm border" id={`qr-wrapper-${tool.id}`}>
+                    <QRCodeCanvas
+                      value={`${baseUrl}/view-tool/${tool.qr_code}`}
+                      size={100}
+                    />
+                  </div>
+                  <p className="text-[10px] text-center text-gray-400 mt-2 font-mono">{tool.qr_code}</p>
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    className="mt-2 text-xs h-7 text-blue-600 hover:text-blue-800"
+                    onClick={() => {
+                      const wrapper = document.getElementById(`qr-wrapper-${tool.id}`);
+                      const canvas = wrapper?.querySelector('canvas');
+                      if (canvas) {
+                        const pngUrl = canvas.toDataURL('image/png');
+                        const downloadLink = document.createElement('a');
+                        downloadLink.href = pngUrl;
+                        downloadLink.download = `QR-${tool.qr_code}.png`;
+                        document.body.appendChild(downloadLink);
+                        downloadLink.click();
+                        document.body.removeChild(downloadLink);
+                        toast.success('QR Code downloaded');
+                      } else {
+                        toast.error('Could not generate download');
+                      }
+                    }}
+                  >
+                    <Download className="w-3 h-3 mr-1" />
+                    Download QR
+                  </Button>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    className="mt-3 w-full text-xs h-7 border-blue-200 text-blue-700 hover:bg-blue-50"
+                    onClick={() => handleEditTool(tool)}
+                    disabled={tool.status === 'scrap'}
+                  >
+                    <Edit className="w-3 h-3 mr-1" />
+                    Edit Details
+                  </Button>
+                </div>
+              </CardContent>
+            </Card>
+          ))}
+          {savedTools.length === 0 && (
+            <div className="col-span-full text-center py-12 text-gray-500 bg-gray-50 rounded-lg border-2 border-dashed">
+              No tools saved yet. Use the form above to add one.
+            </div>
+          )}
+        </div>
+      </div>
+
       {/* Sticky Action Bar */}
-      <div className="sticky bottom-0 bg-white border-t border-gray-200 py-4 px-6 flex justify-end gap-3">
+      <div className="sticky bottom-0 bg-white border-t border-gray-200 py-4 px-6 flex justify-end gap-3 z-10">
         <Button variant="outline">Cancel</Button>
         <Button className="bg-[#1E3A8A] hover:bg-[#1E3A8A]/90" onClick={handleSave}>
           <Save className="w-4 h-4 mr-2" />
