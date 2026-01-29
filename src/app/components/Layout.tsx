@@ -232,7 +232,7 @@ const Layout = ({ children, user, onLogout }: LayoutProps) => {
       <div className="flex">
         {/* Sidebar - Desktop */}
         <aside
-          className={`hidden lg:block bg-white border-r border-gray-200 transition-all duration-300 ${sidebarOpen ? 'w-64' : 'w-0 overflow-hidden'
+          className={`hidden lg:block bg-white border-r border-gray-200 transition-all duration-300 shrink-0 ${sidebarOpen ? 'w-64' : 'w-0 overflow-hidden'
             }`}
         >
           <nav className="p-4 space-y-1">
@@ -243,8 +243,8 @@ const Layout = ({ children, user, onLogout }: LayoutProps) => {
                   key={item.path}
                   to={item.path}
                   className={`flex items-center gap-3 px-4 py-3 rounded-lg transition-colors ${isActive
-                      ? 'bg-[#1E3A8A] text-white'
-                      : 'text-gray-700 hover:bg-gray-100'
+                    ? 'bg-[#1E3A8A] text-white'
+                    : 'text-gray-700 hover:bg-gray-100'
                     }`}
                 >
                   {item.icon}
@@ -267,8 +267,8 @@ const Layout = ({ children, user, onLogout }: LayoutProps) => {
                       key={item.path}
                       to={item.path}
                       className={`flex items-center gap-3 px-4 py-3 rounded-lg transition-colors ${isActive
-                          ? 'bg-[#1E3A8A] text-white'
-                          : 'text-gray-700 hover:bg-gray-100'
+                        ? 'bg-[#1E3A8A] text-white'
+                        : 'text-gray-700 hover:bg-gray-100'
                         }`}
                       onClick={() => setMobileMenuOpen(false)}
                     >

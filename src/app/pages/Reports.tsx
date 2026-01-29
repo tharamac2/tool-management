@@ -1,340 +1,278 @@
 import { useState, useEffect } from 'react';
 import api from '../services/api';
-import { Card, CardContent, CardHeader, CardTitle } from '../components/ui/card';
-import { Button } from '../components/ui/button';
-import { Input } from '../components/ui/input';
-import { Label } from '../components/ui/label';
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '../components/ui/select';
-import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '../components/ui/table';
-import { Badge } from '../components/ui/badge';
-import { Tabs, TabsContent, TabsList, TabsTrigger } from '../components/ui/tabs';
-import { FileDown, Filter, Search } from 'lucide-react';
-import { toast } from 'sonner';
-import { DatePicker } from '../components/ui/date-picker';
+import { Card, CardContent, CardHeader, CardTitle } from "../components/ui/card";
+import { Button } from "../components/ui/button";
+import { Input } from "../components/ui/input";
+import { Download, Search, X } from "lucide-react";
+import {
+    Table,
+    TableBody,
+    TableCell,
+    TableHead,
+    TableHeader,
+    TableRow,
+} from "../components/ui/table";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "../components/ui/select";
 
-const Reports = () => {
-  const [dateFrom, setDateFrom] = useState<Date | undefined>();
-  const [dateTo, setDateTo] = useState<Date | undefined>();
-  const [reportType, setReportType] = useState('all');
-  const [searchQuery, setSearchQuery] = useState('');
+import jsPDF from 'jspdf';
+import autoTable from 'jspdf-autotable';
 
-  const [toolInventoryData, setToolInventoryData] = useState<any[]>([]);
-  const [inspectionHistory, setInspectionHistory] = useState<any[]>([]);
+export default function Reports() {
+    const [tools, setTools] = useState<any[]>([]);
+    const [globalSearch, setGlobalSearch] = useState("");
+    const [filters, setFilters] = useState<Record<string, string>>({});
 
-  // Fetch real data
-  useEffect(() => {
-    const fetchData = async () => {
-      try {
-        const [toolsRes, inspectionsRes] = await Promise.all([
-          api.get('/tools/'),
-          api.get('/inspections/?limit=100')
-        ]);
-        setToolInventoryData(toolsRes.data);
-        setInspectionHistory(inspectionsRes.data);
-      } catch (error) {
-        console.error("Error fetching reports data", error);
-        toast.error("Failed to load reports data");
-      }
+    useEffect(() => {
+        const fetchTools = async () => {
+            try {
+                const response = await api.get('/tools/');
+                setTools(response.data);
+            } catch (error) {
+                console.error("Failed to fetch tools report", error);
+            }
+        };
+        fetchTools();
+    }, []);
+
+    const handleFilterChange = (key: string, value: string) => {
+        setFilters(prev => ({ ...prev, [key]: value }));
     };
-    fetchData();
-  }, []);
 
-  const maintenanceRecords = [
-    { toolId: 'T023', description: 'Wire Rope 3T', type: 'Repair', date: '2024-11-15', cost: '$250', status: 'Completed' },
-    { toolId: 'T045', description: 'Shackle 5T', type: 'Replacement', date: '2024-12-01', cost: '$120', status: 'In Progress' },
-    { toolId: 'T067', description: 'Chain Hoist 10T', type: 'Service', date: '2024-12-10', cost: '$180', status: 'Completed' },
-  ];
+    const clearFilters = () => {
+        setGlobalSearch("");
+        setFilters({});
+    };
 
-  const siteTransfers = [
-    { toolId: 'T012', description: 'Lifting Beam 5T', from: 'Site A', to: 'Site C', date: '2024-12-15', approvedBy: 'Manager A' },
-    { toolId: 'T034', description: 'Wire Rope 8T', from: 'Site B', to: 'Site D', date: '2024-12-18', approvedBy: 'Manager B' },
-    { toolId: 'T056', description: 'Hydraulic Jack 15T', from: 'Site C', to: 'Site E', date: '2024-12-20', approvedBy: 'Manager C' },
-  ];
+    const filteredTools = tools.filter(tool => {
+        // 1. Global Search
+        const searchStr = globalSearch.toLowerCase();
+        const globalMatch = !globalSearch || [
+            tool.description, tool.qr_code, tool.make, tool.capacity, tool.safe_working_load,
+            tool.purchaser_name, tool.subcontractor_name, tool.current_site, tool.status,
+            tool.inspection_result
+        ].some(val => val?.toString().toLowerCase().includes(searchStr));
 
-  const handleExport = (format: string) => {
-    toast.success(`Exporting report as ${format.toUpperCase()}...`);
-  };
+        if (!globalMatch) return false;
 
-  const handleApplyFilters = () => {
-    toast.success('Filters applied successfully');
-  };
+        // 2. Column Filters
+        return Object.entries(filters).every(([key, filterVal]) => {
+            if (!filterVal || filterVal === 'all') return true;
+            const toolVal = tool[key]?.toString().toLowerCase() || "";
+            return toolVal.includes(filterVal.toLowerCase());
+        });
+    });
 
-  const handleClearFilters = () => {
-    setDateFrom(undefined);
-    setDateTo(undefined);
-    setReportType('all');
-    setSearchQuery('');
-    toast.success('Filters cleared');
-  };
+    const downloadCSV = () => {
+        if (filteredTools.length === 0) return;
 
-  const getStatusBadge = (status: string) => {
-    if (!status) return <Badge variant="secondary">Unknown</Badge>;
-    const lowerStatus = status.toLowerCase();
-    switch (lowerStatus) {
-      case 'usable':
-      case 'pass':
-      case 'completed':
-        return <Badge className="bg-[#16A34A]">{status}</Badge>;
-      case 'conditional':
-      case 'in progress':
-        return <Badge className="bg-[#F59E0B]">{status}</Badge>;
-      case 'scrap':
-      case 'fail':
-      case 'not-usable':
-        return <Badge className="bg-[#DC2626]">{status}</Badge>;
-      default:
-        return <Badge variant="secondary">{status}</Badge>;
-    }
-  };
+        const headers = [
+            "ID", "Tool Name", "QR Code", "Make (Year)", "Capacity", "SWL",
+            "Purchaser Name", "Purchaser Contact", "Date of Supply",
+            "Last Inspection", "Inspection Result", "Validity (Yrs)",
+            "Subcontractor", "Previous Site", "Current Site", "Next Site", "Status"
+        ];
 
-  return (
-    <div className="space-y-6">
-      <div className="flex items-center justify-between">
-        <div>
-          <h1 className="text-3xl font-semibold text-[#0F172A]">Reports</h1>
-          <p className="text-gray-500 mt-1">Generate and view comprehensive reports</p>
+        const csvRows = [
+            headers.join(','),
+            ...filteredTools.map(tool => [
+                tool.id,
+                `"${tool.description?.replace(/"/g, '""') || ''}"`,
+                `"${tool.qr_code || ''}"`,
+                `"${tool.make || ''}"`,
+                `"${tool.capacity || ''}"`,
+                `"${tool.safe_working_load || ''}"`,
+                `"${tool.purchaser_name || ''}"`,
+                `"${tool.purchaser_contact || ''}"`,
+                tool.date_of_supply ? new Date(tool.date_of_supply).toLocaleDateString() : '',
+                tool.last_inspection_date ? new Date(tool.last_inspection_date).toLocaleDateString() : '',
+                tool.inspection_result || '',
+                tool.validity_period || '',
+                `"${tool.subcontractor_name || ''}"`,
+                `"${tool.previous_site || ''}"`,
+                `"${tool.current_site || ''}"`,
+                `"${tool.next_site || ''}"`,
+                tool.status || ''
+            ].join(','))
+        ];
+
+        const csvString = csvRows.join('\n');
+        const blob = new Blob([csvString], { type: 'text/csv' });
+        const url = window.URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = `tools_report_${new Date().toISOString().split('T')[0]}.csv`;
+        a.click();
+        window.URL.revokeObjectURL(url);
+    };
+
+    const downloadPDF = () => {
+        if (filteredTools.length === 0) return;
+
+        const doc = new jsPDF('landscape');
+
+        doc.setFontSize(18);
+        doc.text("Tool Inventory Report", 14, 22);
+        doc.setFontSize(11);
+        doc.text(`Generated on: ${new Date().toLocaleDateString()}`, 14, 30);
+
+        const tableColumn = [
+            "Tool Name", "QR Code", "Make", "Capacity", "SWL", "Purchaser",
+            "Supply Date", "Last Insp.", "Result", "Subcon", "Site", "Status"
+        ];
+
+        const tableRows = filteredTools.map(tool => [
+            tool.description,
+            tool.qr_code,
+            tool.make,
+            tool.capacity,
+            tool.safe_working_load,
+            tool.purchaser_name,
+            tool.date_of_supply ? new Date(tool.date_of_supply).toLocaleDateString() : '-',
+            tool.last_inspection_date ? new Date(tool.last_inspection_date).toLocaleDateString() : '-',
+            tool.inspection_result,
+            tool.subcontractor_name,
+            tool.current_site,
+            tool.status
+        ]);
+
+        autoTable(doc, {
+            head: [tableColumn],
+            body: tableRows,
+            startY: 35,
+            theme: 'grid',
+            styles: { fontSize: 8, cellPadding: 2 },
+            headStyles: { fillColor: [30, 58, 138] }, // #1E3A8A
+        });
+
+        doc.save(`tools_report_${new Date().toISOString().split('T')[0]}.pdf`);
+    };
+
+    return (
+        <div className="max-w-[95vw] mx-auto space-y-6">
+            <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
+                <div>
+                    <h1 className="text-3xl font-semibold text-[#0F172A]">Tool Inventory Report</h1>
+                    <p className="text-gray-500 mt-1">Comprehensive list of all tools and their details.</p>
+                </div>
+                <div className="flex items-center gap-2">
+                    <Button variant="outline" onClick={clearFilters} title="Clear all filters">
+                        <X className="w-4 h-4 mr-2" />
+                        Clear Filters
+                    </Button>
+                    <Button onClick={downloadPDF} variant="outline" className="border-[#1E3A8A] text-[#1E3A8A] hover:bg-blue-50">
+                        <Download className="w-4 h-4 mr-2" />
+                        Export PDF
+                    </Button>
+                    <Button onClick={downloadCSV} className="bg-[#1E3A8A]">
+                        <Download className="w-4 h-4 mr-2" />
+                        Export CSV
+                    </Button>
+                </div>
+            </div>
+
+            <div className="flex items-center gap-2 mb-4">
+                <div className="relative flex-1 max-w-md">
+                    <Search className="absolute left-2.5 top-2.5 h-4 w-4 text-gray-500" />
+                    <Input
+                        placeholder="Global Search..."
+                        className="pl-9 bg-white"
+                        value={globalSearch}
+                        onChange={(e) => setGlobalSearch(e.target.value)}
+                    />
+                </div>
+            </div>
+
+            <Card>
+                <CardHeader className="pb-3">
+                    <CardTitle>Detailed Inventory ({filteredTools.length} tools)</CardTitle>
+                </CardHeader>
+                <CardContent>
+                    <div className="rounded-md border overflow-x-auto">
+                        <Table className="min-w-max">
+                            <TableHeader className="bg-gray-50">
+                                <TableRow>
+                                    <TableHead className="min-w-[150px]">Tool Name</TableHead>
+                                    <TableHead className="min-w-[100px]">QR Code</TableHead>
+                                    <TableHead className="min-w-[100px]">Make</TableHead>
+                                    <TableHead className="min-w-[100px]">Capacity</TableHead>
+                                    <TableHead className="min-w-[100px]">SWL</TableHead>
+                                    <TableHead className="min-w-[150px]">Purchaser</TableHead>
+                                    <TableHead className="min-w-[100px]">Supply Date</TableHead>
+                                    <TableHead className="min-w-[100px]">Last Insp.</TableHead>
+                                    <TableHead className="min-w-[100px]">Result</TableHead>
+                                    <TableHead className="min-w-[150px]">Subcontractor</TableHead>
+                                    <TableHead className="min-w-[150px]">Current Site</TableHead>
+                                    <TableHead className="min-w-[100px]">Status</TableHead>
+                                </TableRow>
+                                {/* Column Filters Row */}
+                                <TableRow className="bg-gray-50 hover:bg-gray-50">
+                                    <TableCell className="p-2"><Input className="h-8 text-xs bg-white" placeholder="Filter Name" value={filters.description || ''} onChange={e => handleFilterChange('description', e.target.value)} /></TableCell>
+                                    <TableCell className="p-2"><Input className="h-8 text-xs bg-white" placeholder="Filter QR" value={filters.qr_code || ''} onChange={e => handleFilterChange('qr_code', e.target.value)} /></TableCell>
+                                    <TableCell className="p-2"><Input className="h-8 text-xs bg-white" placeholder="Filter Make" value={filters.make || ''} onChange={e => handleFilterChange('make', e.target.value)} /></TableCell>
+                                    <TableCell className="p-2"><Input className="h-8 text-xs bg-white" placeholder="Filter Cap" value={filters.capacity || ''} onChange={e => handleFilterChange('capacity', e.target.value)} /></TableCell>
+                                    <TableCell className="p-2"><Input className="h-8 text-xs bg-white" placeholder="Filter SWL" value={filters.safe_working_load || ''} onChange={e => handleFilterChange('safe_working_load', e.target.value)} /></TableCell>
+                                    <TableCell className="p-2"><Input className="h-8 text-xs bg-white" placeholder="Filter Purchaser" value={filters.purchaser_name || ''} onChange={e => handleFilterChange('purchaser_name', e.target.value)} /></TableCell>
+                                    <TableCell className="p-2"><Input className="h-8 text-xs bg-white" placeholder="Filter Supply Date" value={filters.date_of_supply || ''} onChange={e => handleFilterChange('date_of_supply', e.target.value)} /></TableCell>
+                                    <TableCell className="p-2"><Input className="h-8 text-xs bg-white" placeholder="Filter Insp Date" value={filters.last_inspection_date || ''} onChange={e => handleFilterChange('last_inspection_date', e.target.value)} /></TableCell>
+                                    <TableCell className="p-2">
+                                        <Select value={filters.inspection_result || 'all'} onValueChange={val => handleFilterChange('inspection_result', val)}>
+                                            <SelectTrigger className="h-8 text-xs bg-white"><SelectValue placeholder="All" /></SelectTrigger>
+                                            <SelectContent>
+                                                <SelectItem value="all">All</SelectItem>
+                                                <SelectItem value="usable">Usable</SelectItem>
+                                                <SelectItem value="not-usable">Non Usable</SelectItem>
+                                            </SelectContent>
+                                        </Select>
+                                    </TableCell>
+                                    <TableCell className="p-2"><Input className="h-8 text-xs bg-white" placeholder="Filter Subcon" value={filters.subcontractor_name || ''} onChange={e => handleFilterChange('subcontractor_name', e.target.value)} /></TableCell>
+                                    <TableCell className="p-2"><Input className="h-8 text-xs bg-white" placeholder="Filter Site" value={filters.current_site || ''} onChange={e => handleFilterChange('current_site', e.target.value)} /></TableCell>
+                                    <TableCell className="p-2">
+                                        <Select value={filters.status || 'all'} onValueChange={val => handleFilterChange('status', val)}>
+                                            <SelectTrigger className="h-8 text-xs bg-white"><SelectValue placeholder="All" /></SelectTrigger>
+                                            <SelectContent>
+                                                <SelectItem value="all">All</SelectItem>
+                                                <SelectItem value="usable">Usable</SelectItem>
+                                                <SelectItem value="scrap">Scrap</SelectItem>
+                                            </SelectContent>
+                                        </Select>
+                                    </TableCell>
+                                </TableRow>
+                            </TableHeader>
+                            <TableBody>
+                                {filteredTools.length > 0 ? (
+                                    filteredTools.map((tool) => (
+                                        <TableRow key={tool.id} className="hover:bg-gray-50/50">
+                                            <TableCell className="font-medium text-[#1E3A8A]">{tool.description}</TableCell>
+                                            <TableCell className="font-mono text-xs">{tool.qr_code}</TableCell>
+                                            <TableCell>{tool.make}</TableCell>
+                                            <TableCell>{tool.capacity}</TableCell>
+                                            <TableCell>{tool.safe_working_load}</TableCell>
+                                            <TableCell>{tool.purchaser_name || '-'}</TableCell>
+                                            <TableCell>{tool.date_of_supply ? new Date(tool.date_of_supply).toLocaleDateString() : '-'}</TableCell>
+                                            <TableCell>{tool.last_inspection_date ? new Date(tool.last_inspection_date).toLocaleDateString() : '-'}</TableCell>
+                                            <TableCell className="capitalize">{tool.inspection_result || '-'}</TableCell>
+                                            <TableCell>{tool.subcontractor_name || '-'}</TableCell>
+                                            <TableCell>{tool.current_site || '-'}</TableCell>
+                                            <TableCell>
+                                                <span className={`px-2 py-1 rounded text-xs font-semibold capitalize ${tool.status === 'usable' ? 'bg-green-100 text-green-700' : 'bg-red-100 text-red-700'
+                                                    }`}>
+                                                    {tool.status}
+                                                </span>
+                                            </TableCell>
+                                        </TableRow>
+                                    ))
+                                ) : (
+                                    <TableRow>
+                                        <TableCell colSpan={12} className="h-24 text-center">
+                                            No tools found matching your filters.
+                                        </TableCell>
+                                    </TableRow>
+                                )}
+                            </TableBody>
+                        </Table>
+                    </div>
+                </CardContent>
+            </Card>
         </div>
-        <div className="flex gap-2">
-          <Button variant="outline" onClick={() => handleExport('pdf')}>
-            <FileDown className="w-4 h-4 mr-2" />
-            Export PDF
-          </Button>
-          <Button variant="outline" onClick={() => handleExport('excel')}>
-            <FileDown className="w-4 h-4 mr-2" />
-            Export Excel
-          </Button>
-          <Button variant="outline" onClick={() => handleExport('csv')}>
-            <FileDown className="w-4 h-4 mr-2" />
-            Export CSV
-          </Button>
-        </div>
-      </div>
-
-      {/* Filters */}
-      <Card>
-        <CardHeader>
-          <CardTitle className="flex items-center gap-2">
-            <Filter className="w-5 h-5" />
-            Filters
-          </CardTitle>
-        </CardHeader>
-        <CardContent>
-          <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
-            <div className="space-y-2">
-              <Label>Report Type</Label>
-              <Select value={reportType} onValueChange={setReportType}>
-                <SelectTrigger>
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="all">All Reports</SelectItem>
-                  <SelectItem value="inventory">Tool Inventory</SelectItem>
-                  <SelectItem value="inspection">Inspection History</SelectItem>
-                  <SelectItem value="maintenance">Maintenance Records</SelectItem>
-                  <SelectItem value="transfers">Site Transfers</SelectItem>
-                </SelectContent>
-              </Select>
-            </div>
-            <div className="space-y-2">
-              <Label>From Date</Label>
-              <DatePicker
-                date={dateFrom}
-                onDateChange={setDateFrom}
-              />
-            </div>
-            <div className="space-y-2">
-              <Label>To Date</Label>
-              <DatePicker
-                date={dateTo}
-                onDateChange={setDateTo}
-              />
-            </div>
-            <div className="space-y-2">
-              <Label>Search</Label>
-              <div className="relative">
-                <Search className="absolute left-3 top-3 w-4 h-4 text-gray-400" />
-                <Input
-                  placeholder="Search tools..."
-                  className="pl-9"
-                  value={searchQuery}
-                  onChange={(e) => setSearchQuery(e.target.value)}
-                />
-              </div>
-            </div>
-          </div>
-          <div className="flex gap-2 mt-4">
-            <Button className="bg-[#1E3A8A]" onClick={handleApplyFilters}>
-              <Filter className="w-4 h-4 mr-2" />
-              Apply Filters
-            </Button>
-            <Button variant="outline" onClick={handleClearFilters}>Clear Filters</Button>
-          </div>
-        </CardContent>
-      </Card>
-
-      {/* Reports Tabs */}
-      <Tabs defaultValue="inventory" className="space-y-4">
-        <TabsList>
-          <TabsTrigger value="inventory">Tool Inventory</TabsTrigger>
-          <TabsTrigger value="inspection">Inspection History</TabsTrigger>
-          <TabsTrigger value="maintenance">Maintenance Records</TabsTrigger>
-          <TabsTrigger value="transfers">Site Transfers</TabsTrigger>
-        </TabsList>
-
-        {/* Tool Inventory Report */}
-        <TabsContent value="inventory">
-          <Card>
-            <CardHeader>
-              <CardTitle>Tool Inventory Report</CardTitle>
-            </CardHeader>
-            <CardContent>
-              <Table>
-                <TableHeader>
-                  <TableRow>
-                    <TableHead>Tool Code</TableHead>
-                    <TableHead>Description</TableHead>
-                    <TableHead>Site</TableHead>
-                    <TableHead>Status</TableHead>
-                    <TableHead>Last Inspection</TableHead>
-                    <TableHead>Expiry Date</TableHead>
-                  </TableRow>
-                </TableHeader>
-                <TableBody>
-                  {toolInventoryData.map((tool) => (
-                    <TableRow key={tool.id}>
-                      <TableCell className="font-mono">{tool.qr_code}</TableCell>
-                      <TableCell>{tool.description}</TableCell>
-                      <TableCell>{tool.current_site || '-'}</TableCell>
-                      <TableCell>{getStatusBadge(tool.status)}</TableCell>
-                      <TableCell>{tool.last_inspection_date ? new Date(tool.last_inspection_date).toLocaleDateString() : '-'}</TableCell>
-                      <TableCell>{tool.expiry_date ? new Date(tool.expiry_date).toLocaleDateString() : '-'}</TableCell>
-                    </TableRow>
-                  ))}
-                  {toolInventoryData.length === 0 && (
-                    <TableRow>
-                      <TableCell colSpan={6} className="text-center py-4">No tools found</TableCell>
-                    </TableRow>
-                  )}
-                </TableBody>
-              </Table>
-            </CardContent>
-          </Card>
-        </TabsContent>
-
-        {/* Inspection History Report */}
-        <TabsContent value="inspection">
-          <Card>
-            <CardHeader>
-              <CardTitle>Inspection History Report</CardTitle>
-            </CardHeader>
-            <CardContent>
-              <Table>
-                <TableHeader>
-                  <TableRow>
-                    <TableHead>Tool Code</TableHead>
-                    <TableHead>Description</TableHead>
-                    {/*  <TableHead>Inspector</TableHead>  Backend needs to return inspector name */}
-                    <TableHead>Date</TableHead>
-                    <TableHead>Result</TableHead>
-                    <TableHead>Usability</TableHead>
-                  </TableRow>
-                </TableHeader>
-                <TableBody>
-                  {inspectionHistory.map((inspection, index) => (
-                    <TableRow key={index}>
-                      <TableCell className="font-mono">
-                        {inspection.tool ? inspection.tool.qr_code : `ID: ${inspection.tool_id}`}
-                      </TableCell>
-                      <TableCell>{inspection.tool ? inspection.tool.description : '-'}</TableCell>
-                      {/* <TableCell>{inspection.inspector_id}</TableCell> */}
-                      <TableCell>{new Date(inspection.date).toLocaleDateString()}</TableCell>
-                      <TableCell>{getStatusBadge(inspection.result)}</TableCell>
-                      <TableCell>{inspection.usability_percentage ? `${inspection.usability_percentage}%` : '-'}</TableCell>
-                    </TableRow>
-                  ))}
-                  {inspectionHistory.length === 0 && (
-                    <TableRow>
-                      <TableCell colSpan={6} className="text-center py-4">No inspections found</TableCell>
-                    </TableRow>
-                  )}
-                </TableBody>
-              </Table>
-            </CardContent>
-          </Card>
-        </TabsContent>
-
-        {/* Maintenance Records Report */}
-        <TabsContent value="maintenance">
-          <Card>
-            <CardHeader>
-              <CardTitle>Maintenance Records Report</CardTitle>
-            </CardHeader>
-            <CardContent>
-              <Table>
-                <TableHeader>
-                  <TableRow>
-                    <TableHead>Tool ID</TableHead>
-                    <TableHead>Description</TableHead>
-                    <TableHead>Type</TableHead>
-                    <TableHead>Date</TableHead>
-                    <TableHead>Cost</TableHead>
-                    <TableHead>Status</TableHead>
-                  </TableRow>
-                </TableHeader>
-                <TableBody>
-                  {maintenanceRecords.map((record, index) => (
-                    <TableRow key={index}>
-                      <TableCell className="font-mono">{record.toolId}</TableCell>
-                      <TableCell>{record.description}</TableCell>
-                      <TableCell>{record.type}</TableCell>
-                      <TableCell>{new Date(record.date).toLocaleDateString()}</TableCell>
-                      <TableCell className="font-semibold">{record.cost}</TableCell>
-                      <TableCell>{getStatusBadge(record.status)}</TableCell>
-                    </TableRow>
-                  ))}
-                </TableBody>
-              </Table>
-            </CardContent>
-          </Card>
-        </TabsContent>
-
-        {/* Site Transfers Report */}
-        <TabsContent value="transfers">
-          <Card>
-            <CardHeader>
-              <CardTitle>Site Transfer Report</CardTitle>
-            </CardHeader>
-            <CardContent>
-              <Table>
-                <TableHeader>
-                  <TableRow>
-                    <TableHead>Tool ID</TableHead>
-                    <TableHead>Description</TableHead>
-                    <TableHead>From Site</TableHead>
-                    <TableHead>To Site</TableHead>
-                    <TableHead>Date</TableHead>
-                    <TableHead>Approved By</TableHead>
-                  </TableRow>
-                </TableHeader>
-                <TableBody>
-                  {siteTransfers.map((transfer, index) => (
-                    <TableRow key={index}>
-                      <TableCell className="font-mono">{transfer.toolId}</TableCell>
-                      <TableCell>{transfer.description}</TableCell>
-                      <TableCell>{transfer.from}</TableCell>
-                      <TableCell>{transfer.to}</TableCell>
-                      <TableCell>{new Date(transfer.date).toLocaleDateString()}</TableCell>
-                      <TableCell>{transfer.approvedBy}</TableCell>
-                    </TableRow>
-                  ))}
-                </TableBody>
-              </Table>
-            </CardContent>
-          </Card>
-        </TabsContent>
-      </Tabs>
-    </div>
-  );
-};
-
-export default Reports;
+    );
+}

@@ -8,11 +8,19 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '.
 import { RadioGroup, RadioGroupItem } from '../components/ui/radio-group';
 import { Separator } from '../components/ui/separator';
 import { QRCodeCanvas } from 'qrcode.react';
-import { Download, Printer, Save, Edit } from 'lucide-react';
+import { Download, Printer, Save, Edit, Search } from 'lucide-react';
 import { toast } from 'sonner';
 import { DatePicker } from '../components/ui/date-picker';
 import { Html5Qrcode } from 'html5-qrcode';
 import { useRef } from 'react';
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from "../components/ui/table";
 
 const ToolMaster = () => {
   const [savedTools, setSavedTools] = useState<any[]>([]);
@@ -48,7 +56,7 @@ const ToolMaster = () => {
 
   const [toolData, setToolData] = useState({
     description: '',
-    make: '',
+    make: new Date().getFullYear().toString(),
     capacity: '',
     safeWorkingLoad: '',
     purchaserName: '',
@@ -66,6 +74,20 @@ const ToolMaster = () => {
 
 
   const [qrCode, setQrCode] = useState('');
+  const [searchTerm, setSearchTerm] = useState('');
+  const [statusFilter, setStatusFilter] = useState('all');
+
+  const filteredTools = savedTools.filter(tool => {
+    const matchesSearch =
+      tool.description.toLowerCase().includes(searchTerm.toLowerCase()) ||
+      tool.qr_code.toLowerCase().includes(searchTerm.toLowerCase()) ||
+      tool.make.toLowerCase().includes(searchTerm.toLowerCase()) ||
+      tool.current_site?.toLowerCase().includes(searchTerm.toLowerCase());
+
+    const matchesStatus = statusFilter === 'all' || tool.status === statusFilter;
+
+    return matchesSearch && matchesStatus;
+  });
 
   // ... (useState definitions)
 
@@ -330,7 +352,7 @@ const ToolMaster = () => {
                 setIsNewTool(true);
                 setEditingToolId(null);
                 setQrCode('');
-                // Optionally reset toolData here too
+                setToolData(prev => ({ ...prev, make: new Date().getFullYear().toString() }));
               }}
               className={isNewTool ? "bg-[#1E3A8A]" : ""}
             >
@@ -380,10 +402,10 @@ const ToolMaster = () => {
             </CardHeader>
             <CardContent className="grid grid-cols-1 md:grid-cols-2 gap-4">
               <div className="space-y-2">
-                <Label htmlFor="description">Tool Type <span className="text-red-600">*</span></Label>
+                <Label htmlFor="description">Tool Name <span className="text-red-600">*</span></Label>
                 <Select onValueChange={(value) => handleInputChange('description', value)} required>
                   <SelectTrigger>
-                    <SelectValue placeholder="Select tool type" />
+                    <SelectValue placeholder="Select tool Name" />
                   </SelectTrigger>
                   <SelectContent>
                     <SelectItem value="chain-hoist">Chain Hoist</SelectItem>
@@ -395,34 +417,58 @@ const ToolMaster = () => {
                 </Select>
               </div>
               <div className="space-y-2">
-                <Label htmlFor="make">Make <span className="text-red-600">*</span></Label>
-                <Input
-                  id="make"
-                  placeholder="Enter make"
+                <Label htmlFor="make">Make (Year) <span className="text-red-600">*</span></Label>
+                <Select
                   value={toolData.make}
-                  onChange={(e) => handleInputChange('make', e.target.value)}
-                  required
-                />
+                  onValueChange={(value) => handleInputChange('make', value)}
+                >
+                  <SelectTrigger id="make">
+                    <SelectValue placeholder="Select year" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {Array.from({ length: 30 }, (_, i) => (new Date().getFullYear() - i).toString()).map((year) => (
+                      <SelectItem key={year} value={year}>
+                        {year}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
               </div>
               <div className="space-y-2">
                 <Label htmlFor="capacity">Capacity <span className="text-red-600">*</span></Label>
-                <Input
-                  id="capacity"
-                  placeholder="e.g., 5 Tonnes"
+                <Select
                   value={toolData.capacity}
-                  onChange={(e) => handleInputChange('capacity', e.target.value)}
-                  required
-                />
+                  onValueChange={(value) => handleInputChange('capacity', value)}
+                >
+                  <SelectTrigger id="capacity">
+                    <SelectValue placeholder="Select Capacity" />
+                  </SelectTrigger>
+                  <SelectContent className="max-h-[200px]">
+                    {Array.from({ length: 50 }, (_, i) => i + 1).map((num) => (
+                      <SelectItem key={num} value={`${num} ${num === 1 ? 'Tonne' : 'Tonnes'}`}>
+                        {num} {num === 1 ? 'Tonne' : 'Tonnes'}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
               </div>
               <div className="space-y-2">
                 <Label htmlFor="swl">Safe Working Load (SWL) <span className="text-red-600">*</span></Label>
-                <Input
-                  id="swl"
-                  placeholder="e.g., 5000 kg"
+                <Select
                   value={toolData.safeWorkingLoad}
-                  onChange={(e) => handleInputChange('safeWorkingLoad', e.target.value)}
-                  required
-                />
+                  onValueChange={(value) => handleInputChange('safeWorkingLoad', value)}
+                >
+                  <SelectTrigger id="swl">
+                    <SelectValue placeholder="Select SWL" />
+                  </SelectTrigger>
+                  <SelectContent className="max-h-[200px]">
+                    {Array.from({ length: 50 }, (_, i) => i + 1).map((num) => (
+                      <SelectItem key={num} value={`${num} ${num === 1 ? 'Tonne' : 'Tonnes'}`}>
+                        {num} {num === 1 ? 'Tonne' : 'Tonnes'}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
               </div>
             </CardContent>
           </Card>
@@ -614,94 +660,128 @@ const ToolMaster = () => {
       </div>
 
       {/* SAVED TOOLS LIST */}
+      {/* SAVED TOOLS LIST */}
       <div className="mt-12 mb-8">
         <h2 className="text-2xl font-semibold text-[#0F172A] mb-6">Saved Tools Inventory</h2>
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-          {savedTools.map((tool) => (
-            <Card key={tool.id} className="overflow-hidden border shadow-sm hover:shadow-md transition-shadow">
-              <CardHeader className="bg-gray-50 pb-2">
-                <div className="flex justify-between items-start">
-                  <div>
-                    <CardTitle className="text-lg font-bold text-[#1E3A8A]">{tool.description}</CardTitle>
-                    <p className="text-xs font-mono text-gray-500 mt-1">{tool.qr_code}</p>
-                  </div>
-                  <div className={`px-2 py-1 rounded text-xs font-semibold capitalize ${tool.status === 'usable' ? 'bg-green-100 text-green-700' : 'bg-red-100 text-red-700'
-                    }`}>
-                    {tool.status}
-                  </div>
-                </div>
-              </CardHeader>
-              <CardContent className="pt-4">
-                <div className="grid grid-cols-2 gap-y-2 gap-x-4 text-sm">
-                  <div>
-                    <p className="text-gray-500 text-xs">Make</p>
-                    <p className="font-medium truncate" title={tool.make}>{tool.make}</p>
-                  </div>
-                  <div>
-                    <p className="text-gray-500 text-xs">Capacity</p>
-                    <p className="font-medium truncate" title={tool.capacity}>{tool.capacity}</p>
-                  </div>
-                  <div>
-                    <p className="text-gray-500 text-xs">SWL</p>
-                    <p className="font-medium truncate" title={tool.safe_working_load}>{tool.safe_working_load}</p>
-                  </div>
-                  <div>
-                    <p className="text-gray-500 text-xs">Site</p>
-                    <p className="font-medium truncate" title={tool.current_site}>{tool.current_site || '-'}</p>
-                  </div>
-                </div>
 
-                <div className="flex flex-col items-center border-t pt-4 bg-gray-50/50 -mx-6 -mb-6 pb-8 mt-4 px-6">
-                  <div className="bg-white p-2 rounded shadow-sm border" id={`qr-wrapper-${tool.id}`}>
-                    <QRCodeCanvas
-                      value={`${baseUrl}/view-tool/${tool.qr_code}`}
-                      size={100}
-                    />
-                  </div>
-                  <p className="text-[10px] text-center text-gray-400 mt-2 font-mono">{tool.qr_code}</p>
-                  <Button
-                    variant="ghost"
-                    size="sm"
-                    className="mt-2 text-xs h-7 text-blue-600 hover:text-blue-800"
-                    onClick={() => {
-                      const wrapper = document.getElementById(`qr-wrapper-${tool.id}`);
-                      const canvas = wrapper?.querySelector('canvas');
-                      if (canvas) {
-                        const pngUrl = canvas.toDataURL('image/png');
-                        const downloadLink = document.createElement('a');
-                        downloadLink.href = pngUrl;
-                        downloadLink.download = `QR-${tool.qr_code}.png`;
-                        document.body.appendChild(downloadLink);
-                        downloadLink.click();
-                        document.body.removeChild(downloadLink);
-                        toast.success('QR Code downloaded');
-                      } else {
-                        toast.error('Could not generate download');
-                      }
-                    }}
-                  >
-                    <Download className="w-3 h-3 mr-1" />
-                    Download QR
-                  </Button>
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    className="mt-3 w-full text-xs h-7 border-blue-200 text-blue-700 hover:bg-blue-50"
-                    onClick={() => handleEditTool(tool)}
-                    disabled={tool.status === 'scrap'}
-                  >
-                    <Edit className="w-3 h-3 mr-1" />
-                    Edit Details
-                  </Button>
-                </div>
-              </CardContent>
-            </Card>
-          ))}
-          {savedTools.length === 0 && (
-            <div className="col-span-full text-center py-12 text-gray-500 bg-gray-50 rounded-lg border-2 border-dashed">
-              No tools saved yet. Use the form above to add one.
-            </div>
-          )}
+        {/* Search and Filter Bar */}
+        <div className="flex flex-col md:flex-row gap-4 mb-6">
+          <div className="relative flex-1">
+            <Search className="absolute left-2.5 top-2.5 h-4 w-4 text-gray-500" />
+            <Input
+              placeholder="Search by Name, QR, Make or Site..."
+              className="pl-9"
+              value={searchTerm}
+              onChange={(e) => setSearchTerm(e.target.value)}
+            />
+          </div>
+          <div className="w-full md:w-[200px]">
+            <Select value={statusFilter} onValueChange={setStatusFilter}>
+              <SelectTrigger>
+                <SelectValue placeholder="Filter by Status" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">All Status</SelectItem>
+                <SelectItem value="usable">Usable</SelectItem>
+                <SelectItem value="scrap">Scrap</SelectItem>
+              </SelectContent>
+            </Select>
+          </div>
+        </div>
+
+        {/* Table View */}
+        <div className="rounded-md border bg-white shadow-sm overflow-hidden">
+          <Table>
+            <TableHeader className="bg-gray-50">
+              <TableRow>
+                <TableHead>Tool Name</TableHead>
+                <TableHead>QR Code</TableHead>
+                <TableHead>Make</TableHead>
+                <TableHead>Capacity</TableHead>
+                <TableHead>Current Site</TableHead>
+                <TableHead>Status</TableHead>
+                <TableHead className="text-center">QR</TableHead>
+                <TableHead className="text-right">Actions</TableHead>
+              </TableRow>
+            </TableHeader>
+            <TableBody>
+              {filteredTools.length > 0 ? (
+                filteredTools.map((tool) => (
+                  <TableRow key={tool.id} className="hover:bg-gray-50/50">
+                    <TableCell className="font-medium text-[#1E3A8A]">{tool.description}</TableCell>
+                    <TableCell className="font-mono text-xs">{tool.qr_code}</TableCell>
+                    <TableCell>{tool.make}</TableCell>
+                    <TableCell>{tool.capacity}</TableCell>
+                    <TableCell>{tool.current_site || '-'}</TableCell>
+                    <TableCell>
+                      <span className={`px-2 py-1 rounded text-xs font-semibold capitalize ${tool.status === 'usable' ? 'bg-green-100 text-green-700' : 'bg-red-100 text-red-700'
+                        }`}>
+                        {tool.status}
+                      </span>
+                    </TableCell>
+                    <TableCell className="text-center">
+                      {/* Hidden Canvas for Download Generation */}
+                      <div className="hidden" id={`qr-wrapper-list-${tool.id}`}>
+                        <QRCodeCanvas
+                          value={`${baseUrl}/view-tool/${tool.qr_code}`}
+                          size={200}
+                          level={"H"}
+                          includeMargin={true}
+                        />
+                      </div>
+                      <Button
+                        variant="ghost"
+                        size="icon"
+                        title="Download QR"
+                        className="h-8 w-8 text-blue-600 hover:bg-blue-50"
+                        onClick={() => {
+                          const wrapper = document.getElementById(`qr-wrapper-list-${tool.id}`);
+                          const canvas = wrapper?.querySelector('canvas');
+                          if (canvas) {
+                            const pngUrl = canvas.toDataURL('image/png');
+                            const downloadLink = document.createElement('a');
+                            downloadLink.href = pngUrl;
+                            downloadLink.download = `QR-${tool.qr_code}.png`;
+                            document.body.appendChild(downloadLink);
+                            downloadLink.click();
+                            document.body.removeChild(downloadLink);
+                            toast.success(`Downloaded QR: ${tool.qr_code}`);
+                          } else {
+                            toast.error('Could not generate QR');
+                          }
+                        }}
+                      >
+                        <Download className="h-4 w-4" />
+                      </Button>
+                    </TableCell>
+                    <TableCell className="text-right">
+                      <div className="flex justify-end gap-2">
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          className="h-8 w-8 p-0"
+                          onClick={() => {
+                            // Quick view QR logic (using existing download logic structure or just showing toast)
+                            // Ideally, show the QR in a modal or just trigger the edit view which has the QR
+                            handleEditTool(tool);
+                          }}
+                          title="View/Edit"
+                        >
+                          <Edit className="h-4 w-4 text-gray-500" />
+                        </Button>
+                      </div>
+                    </TableCell>
+                  </TableRow>
+                ))
+              ) : (
+                <TableRow>
+                  <TableCell colSpan={8} className="h-24 text-center">
+                    No tools found matching your criteria.
+                  </TableCell>
+                </TableRow>
+              )}
+            </TableBody>
+          </Table>
         </div>
       </div>
 
