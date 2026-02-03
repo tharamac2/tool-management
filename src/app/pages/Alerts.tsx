@@ -95,7 +95,7 @@ const Alerts = () => {
   const getSeverityBadge = (severity: string) => {
     switch (severity) {
       case 'critical':
-        return <Badge className="bg-[#DC2626]">Critical</Badge>;
+        return <Badge className="bg-[#DC2626]">Scrapped</Badge>;
       case 'warning':
         return <Badge className="bg-[#F59E0B]">Warning</Badge>;
       case 'info':
@@ -198,7 +198,7 @@ const Alerts = () => {
           <CardContent className="p-6">
             <div className="flex items-center justify-between">
               <div>
-                <p className="text-sm text-gray-500">Critical Alerts</p>
+                <p className="text-sm text-gray-500">Scrapped Tools</p>
                 <p className="text-3xl font-semibold mt-2">{criticalAlerts.length}</p>
               </div>
               <div className="w-12 h-12 bg-red-100 rounded-lg flex items-center justify-center">
@@ -241,7 +241,7 @@ const Alerts = () => {
       <Tabs defaultValue="critical" className="space-y-4">
         <TabsList>
           <TabsTrigger value="critical" className="data-[state=active]:bg-[#DC2626] data-[state=active]:text-white">
-            Critical ({criticalAlerts.length})
+            Scrapped ({criticalAlerts.length})
           </TabsTrigger>
           <TabsTrigger value="warning" className="data-[state=active]:bg-[#F59E0B] data-[state=active]:text-white">
             Warnings ({warningAlerts.length})
@@ -255,7 +255,7 @@ const Alerts = () => {
           {criticalAlerts.map((alert) => (
             <AlertCard key={alert.id} alert={alert} />
           ))}
-          {criticalAlerts.length === 0 && <p className="text-gray-500 text-sm py-4">No critical alerts.</p>}
+          {criticalAlerts.length === 0 && <p className="text-gray-500 text-sm py-4">No scrapped tools or critical alerts.</p>}
         </TabsContent>
 
         <TabsContent value="warning" className="space-y-4">

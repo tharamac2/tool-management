@@ -1,373 +1,303 @@
-import { jsPDF } from 'jspdf';
-import autoTable from 'jspdf-autotable';
-import * as XLSX from 'xlsx';
+import { useState, useEffect } from 'react';
+import api from '../services/api';
 import { Card, CardContent, CardHeader, CardTitle } from '../components/ui/card';
 import { Button } from '../components/ui/button';
-import { Badge } from '../components/ui/badge';
-import { toast } from 'sonner';
+import { FileDown, FileText, RefreshCw, Activity, ShieldCheck, AlertTriangle, Hammer, Calendar } from 'lucide-react';
+import * as XLSX from 'xlsx';
+import jsPDF from 'jspdf';
+import autoTable from 'jspdf-autotable';
 import {
-  Package,
-  CheckCircle,
-  Clock,
-  AlertTriangle,
-  FileDown,
-  TrendingUp
-} from 'lucide-react';
-import {
-  PieChart,
-  Pie,
-  BarChart,
-  Bar,
-  Cell,
-  XAxis,
-  YAxis,
-  CartesianGrid,
-  Tooltip,
-  Legend,
-  ResponsiveContainer
+    BarChart,
+    Bar,
+    XAxis,
+    YAxis,
+    CartesianGrid,
+    Tooltip,
+    Legend,
+    ResponsiveContainer,
+    PieChart,
+    Pie,
+    Cell
 } from 'recharts';
-import { useEffect, useState } from 'react';
-import api from '../services/api';
+import { toast } from 'sonner';
 
 const Dashboard = () => {
-  const [stats, setStats] = useState({
-    total: 0,
-    usable: 0,
-    scrap: 0,
-    nearExpiry: 0
-  });
+    const [loading, setLoading] = useState(true);
+    const [stats, setStats] = useState({
+        total: 0,
+        usable: 0,
+        scrap: 0,
+        expiringSoon: 0,
+        overdue: 0
+    });
+    const [allTools, setAllTools] = useState<any[]>([]);
+    const [siteData, setSiteData] = useState<any[]>([]);
+    const [statusData, setStatusData] = useState<any[]>([]);
 
-  const [recentInspections, setRecentInspections] = useState<any[]>([]);
-  const [siteData, setSiteData] = useState<any[]>([]);
+    const fetchDashboardData = async () => {
+        try {
+            setLoading(true);
+            const response = await api.get('/tools/');
+            const tools = response.data;
+            setAllTools(tools);
 
-  useEffect(() => {
-    const fetchData = async () => {
-      try {
-        const toolsResponse = await api.get('/tools/');
-        const tools = toolsResponse.data;
+            // Calculate Stats
+            const total = tools.length;
+            const usable = tools.filter((t: any) => t.status === 'usable').length;
+            const scrap = tools.filter((t: any) => t.status === 'scrap').length;
 
-        let total = tools.length;
-        let usable = 0;
-        let scrap = 0;
-        const siteCount: Record<string, number> = {};
+            const today = new Date();
+            const thirtyDaysFromNow = new Date();
+            thirtyDaysFromNow.setDate(today.getDate() + 30);
 
-        tools.forEach((tool: any) => {
-          if (tool.status === 'usable') {
-            usable++;
-          } else {
-            scrap++;
-          }
+            const expiringSoon = tools.filter((t: any) => {
+                if (!t.expiry_date) return false;
+                const exp = new Date(t.expiry_date);
+                return exp > today && exp <= thirtyDaysFromNow;
+            }).length;
 
-          const site = tool.current_site || 'Unassigned';
-          siteCount[site] = (siteCount[site] || 0) + 1;
-        });
+            const overdue = tools.filter((t: any) => {
+                if (!t.last_inspection_date) return true; // Never inspected? Maybe not overdue but needs inspection. 
+                // Logic: if next_inspection < today. Next inspection is usually assumed based on last + interval.
+                // Assuming 6 months or 1 year? Let's use expiry date for now as "Overdue" if passed.
+                if (t.expiry_date) {
+                    return new Date(t.expiry_date) < today;
+                }
+                return false;
+            }).length;
 
-        setStats({
-          total,
-          usable,
-          scrap,
-          nearExpiry: 0
-        });
+            setStats({
+                total,
+                usable,
+                scrap,
+                expiringSoon,
+                overdue
+            });
 
-        const newSiteData = Object.keys(siteCount).map(site => ({
-          site,
-          tools: siteCount[site]
-        }));
-        setSiteData(newSiteData);
+            // Prepare Chart Data
+            // Status Distribution
+            setStatusData([
+                { name: 'Usable', value: usable, color: '#10B981' },
+                { name: 'Scrap', value: scrap, color: '#EF4444' },
+            ]);
 
-        const inspectionsResponse = await api.get('/inspections/');
-        const inspectionsData = inspectionsResponse.data.map((insp: any) => ({
-          id: insp.tool?.qr_code || insp.tool_id,
-          description: insp.tool?.description || 'Unknown Tool',
-          date: insp.date,
-          result: insp.result
-        }));
+            // Site Distribution
+            const siteCounts: Record<string, number> = {};
+            tools.forEach((t: any) => {
+                const site = t.current_site || 'Unknown';
+                siteCounts[site] = (siteCounts[site] || 0) + 1;
+            });
+            const siteChartData = Object.keys(siteCounts).map(site => ({
+                name: site,
+                count: siteCounts[site]
+            }));
+            setSiteData(siteChartData);
 
-        setRecentInspections(inspectionsData);
-
-      } catch (error) {
-        console.error("Failed to fetch dashboard data", error);
-      }
+        } catch (error) {
+            console.error("Dashboard fetch failed", error);
+            toast.error("Failed to load dashboard data");
+        } finally {
+            setLoading(false);
+        }
     };
-    fetchData();
-  }, []);
 
-  const kpiData = [
-    { title: 'Total Tools', value: stats.total, icon: <Package className="w-6 h-6" />, color: 'bg-blue-500' },
-    { title: 'Usable Tools', value: stats.usable, icon: <CheckCircle className="w-6 h-6" />, color: 'bg-green-500' },
-    { title: 'Near Expiry', value: stats.nearExpiry, icon: <Clock className="w-6 h-6" />, color: 'bg-amber-500' },
-    { title: 'Scrap Tools', value: stats.scrap, icon: <AlertTriangle className="w-6 h-6" />, color: 'bg-red-500' },
-  ];
+    useEffect(() => {
+        fetchDashboardData();
+    }, []);
 
-  const statusData = [
-    { name: 'Usable', value: stats.usable, color: '#16A34A' },
-    { name: 'Scrap', value: stats.scrap, color: '#DC2626' },
-  ];
+    const handleExportExcel = () => {
+        try {
+            const inventoryData = allTools.map((tool, index) => ({
+                "S.No": index + 1,
+                "Tool ID": tool.id,
+                "Tool Name": tool.description,
+                "QR Code": tool.qr_code,
+                "Make": tool.make,
+                "Capacity": tool.capacity,
+                "SWL": tool.safe_working_load,
+                "Purchaser Name": tool.purchaser_name,
+                "Purchaser Contact": tool.purchaser_contact,
+                "Supplier Code": tool.supplier_code,
+                "Date of Supply": tool.date_of_supply ? new Date(tool.date_of_supply).toLocaleDateString() : '',
+                "Last Inspection": tool.last_inspection_date ? new Date(tool.last_inspection_date).toLocaleDateString() : '',
+                "Inspection Result": tool.inspection_result,
+                "Usability %": tool.usability_percentage,
+                "Validity (Yrs)": tool.validity_period,
+                "Expiry Date": tool.expiry_date ? new Date(tool.expiry_date).toLocaleDateString() : '',
+                "Subcontractor": tool.subcontractor_name,
+                "Previous Site": tool.previous_site,
+                "Current Site": tool.current_site,
+                "Next Site": tool.next_site,
+                "Job Code": tool.job_code,
+                "Job Description": tool.job_description,
+                "Status": tool.status,
+                "Remarks": tool.inspection_remarks || ''
+            }));
 
-  const expiringTools = [
-    { id: 'T045', description: 'Chain Hoist 3T', expiryDate: '2025-01-15', site: 'Site B' },
-  ];
+            const wb = XLSX.utils.book_new();
+            const ws = XLSX.utils.json_to_sheet(inventoryData);
 
-  const handleExportPDF = () => {
-    try {
-      console.log("Starting PDF Export...");
-      const doc = new jsPDF();
+            // Auto-width columns
+            const wscols = Object.keys(inventoryData[0] || {}).map(() => ({ wch: 20 }));
+            ws['!cols'] = wscols;
 
-      // Title
-      doc.setFontSize(20);
-      doc.text('Tool Management Dashboard Report', 14, 22);
+            XLSX.utils.book_append_sheet(wb, ws, "Inventory");
+            XLSX.writeFile(wb, `Tool_Inventory_Dashboard_${new Date().toISOString().split('T')[0]}.xlsx`);
+            toast.success("Inventory exported successfully!");
+        } catch (e) {
+            console.error(e);
+            toast.error("Export failed");
+        }
+    };
 
-      // Date
-      doc.setFontSize(10);
-      doc.text(`Generated on: ${new Date().toLocaleString()}`, 14, 30);
+    const handleExportPDF = () => {
+        const doc = new jsPDF();
+        doc.text("Tool Inventory Dashboard Summary", 14, 15);
 
-      // KPIs
-      doc.setFontSize(14);
-      doc.text('Key Performance Indicators', 14, 45);
+        // Add Stats
+        doc.setFontSize(10);
+        doc.text(`Total Tools: ${stats.total}`, 14, 25);
+        doc.text(`Usable: ${stats.usable}`, 14, 30);
+        doc.text(`Scrap: ${stats.scrap}`, 14, 35);
 
-      const kpiRows = [
-        ['Total Tools', stats.total],
-        ['Usable Tools', stats.usable],
-        ['Scrap/Repair', stats.scrap],
-        ['Near Expiry', stats.nearExpiry]
-      ];
+        autoTable(doc, {
+            startY: 40,
+            head: [['S.No', 'Tool Name', 'QR Code', 'Location', 'Status', 'Expiry']],
+            body: allTools.slice(0, 100).map((t, i) => [ // Limit to 100 for summary PDF
+                i + 1,
+                t.description,
+                t.qr_code,
+                t.current_site,
+                t.status,
+                t.expiry_date ? new Date(t.expiry_date).toLocaleDateString() : '-'
+            ]),
+        });
 
-      autoTable(doc, {
-        startY: 50,
-        head: [['Metric', 'Value']],
-        body: kpiRows,
-        theme: 'striped',
-        headStyles: { fillColor: [30, 58, 138] } // #1E3A8A
-      });
+        doc.save(`Dashboard_Summary_${new Date().toISOString().split('T')[0]}.pdf`);
+        toast.success("PDF generated!");
+    };
 
-      // Recent Inspections
-      const finalY = (doc as any).lastAutoTable.finalY || 100;
-      doc.text('Recent Inspections', 14, finalY + 15);
+    const COLORS = ['#0088FE', '#00C49F', '#FFBB28', '#FF8042', '#8884d8'];
 
-      const inspectionRows = recentInspections.map(insp => [
-        insp.description,
-        insp.id,
-        new Date(insp.date).toLocaleDateString(),
-        insp.result.toUpperCase()
-      ]);
-
-      autoTable(doc, {
-        startY: finalY + 20,
-        head: [['Tool', 'ID/QR', 'Date', 'Result']],
-        body: inspectionRows,
-        theme: 'grid',
-        headStyles: { fillColor: [30, 58, 138] }
-      });
-
-      // Site Distribution
-      const finalY2 = (doc as any).lastAutoTable.finalY || 150;
-      doc.text('Site Distribution Summary', 14, finalY2 + 15);
-
-      const siteRows = siteData.map(s => [s.site, s.tools]);
-      autoTable(doc, {
-        startY: finalY2 + 20,
-        head: [['Site', 'Tool Count']],
-        body: siteRows,
-        theme: 'grid'
-      });
-
-      doc.save('dashboard-report.pdf');
-      toast.success("PDF Report generated successfully");
-    } catch (error) {
-      console.error("PDF Export failed:", error);
-      toast.error("Failed to generate PDF. Check console for details.");
-    }
-  };
-
-  const handleExportExcel = () => {
-    try {
-      console.log("Starting Excel Export...");
-      // Worksheet 1: Summary Steps
-      const summaryData = [
-        { Metric: 'Total Tools', Value: stats.total },
-        { Metric: 'Usable Tools', Value: stats.usable },
-        { Metric: 'Scrap Tools', Value: stats.scrap }
-      ];
-
-      // Worksheet 2: Recent Inspections
-      const inspectionData = recentInspections.map(insp => ({
-        Tool: insp.description,
-        ID: insp.id,
-        Date: new Date(insp.date).toLocaleDateString(),
-        Result: insp.result
-      }));
-
-      // Worksheet 3: Site Distribution
-      const siteDistData = siteData.map(s => ({
-        Site: s.site,
-        Count: s.tools
-      }));
-
-      const wb = XLSX.utils.book_new();
-
-      const wsSummary = XLSX.utils.json_to_sheet(summaryData);
-      XLSX.utils.book_append_sheet(wb, wsSummary, "Summary");
-
-      const wsInspections = XLSX.utils.json_to_sheet(inspectionData);
-      XLSX.utils.book_append_sheet(wb, wsInspections, "Inspections");
-
-      const wsSites = XLSX.utils.json_to_sheet(siteDistData);
-      XLSX.utils.book_append_sheet(wb, wsSites, "Site Distribution");
-
-      XLSX.writeFile(wb, "dashboard-export.xlsx");
-      toast.success("Excel Export generated successfully");
-    } catch (error) {
-      console.error("Excel Export failed:", error);
-      toast.error("Failed to generate Excel file.");
-    }
-  };
-
-  return (
-    <div className="space-y-6">
-      <div className="flex items-center justify-between">
-        <div>
-          <h1 className="text-3xl font-semibold text-[#0F172A]">Management Dashboard</h1>
-          <p className="text-gray-500 mt-1">Overview of tool inventory and inspection status</p>
-        </div>
-        <div className="flex gap-2">
-          <Button variant="outline" onClick={handleExportPDF}>
-            <FileDown className="w-4 h-4 mr-2" />
-            Export PDF
-          </Button>
-          <Button variant="outline" onClick={handleExportExcel}>
-            <FileDown className="w-4 h-4 mr-2" />
-            Export Excel
-          </Button>
-        </div>
-      </div>
-      {/* ... rest of component ... */}
-
-      {/* KPI Cards */}
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
-        {kpiData.map((kpi, index) => (
-          <Card key={index}>
-            <CardContent className="p-6">
-              <div className="flex items-center justify-between">
+    return (
+        <div className="space-y-6 animate-in fade-in duration-500">
+            <div className="flex flex-col md:flex-row items-center justify-between gap-4">
                 <div>
-                  <p className="text-sm text-gray-500">{kpi.title}</p>
-                  <p className="text-3xl font-semibold mt-2">{kpi.value}</p>
-                  <div className="flex items-center gap-1 mt-2 text-xs text-green-600">
-                    <TrendingUp className="w-3 h-3" />
-                    <span>+5.2% from last month</span>
-                  </div>
+                    <h1 className="text-3xl font-bold text-[#0F172A]">Dashboard</h1>
+                    <p className="text-gray-500">Overview of tool inventory and status</p>
                 </div>
-                <div className={`${kpi.color} text-white p-3 rounded-lg`}>
-                  {kpi.icon}
+                <div className="flex gap-2">
+
+                    <Button variant="outline" onClick={handleExportPDF}>
+                        <FileText className="w-4 h-4 mr-2 text-red-600" /> PDF
+                    </Button>
+                    <Button variant="outline" onClick={handleExportExcel}>
+                        <FileDown className="w-4 h-4 mr-2 text-green-600" /> Excel
+                    </Button>
                 </div>
-              </div>
-            </CardContent>
-          </Card>
-        ))}
-      </div>
-
-      {/* Charts */}
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-        {/* Tool Status Pie Chart */}
-        <Card>
-          <CardHeader>
-            <CardTitle>Tool Status Distribution</CardTitle>
-          </CardHeader>
-          <CardContent>
-            <ResponsiveContainer width="100%" height={300}>
-              <PieChart>
-                <Pie
-                  data={statusData}
-                  cx="50%"
-                  cy="50%"
-                  labelLine={false}
-                  label={({ name, percent }) => `${name} ${(percent * 100).toFixed(0)}%`}
-                  outerRadius={100}
-                  fill="#8884d8"
-                  dataKey="value"
-                >
-                  {statusData.map((entry, index) => (
-                    <Cell key={`cell-${index}`} fill={entry.color} />
-                  ))}
-                </Pie>
-                <Tooltip />
-              </PieChart>
-            </ResponsiveContainer>
-          </CardContent>
-        </Card>
-
-        {/* Site Distribution Bar Chart */}
-        <Card>
-          <CardHeader>
-            <CardTitle>Site-wise Tool Distribution</CardTitle>
-          </CardHeader>
-          <CardContent>
-            <ResponsiveContainer width="100%" height={300}>
-              <BarChart data={siteData}>
-                <CartesianGrid strokeDasharray="3 3" />
-                <XAxis dataKey="site" />
-                <YAxis />
-                <Tooltip />
-                <Bar dataKey="tools" fill="#1E3A8A" />
-              </BarChart>
-            </ResponsiveContainer>
-          </CardContent>
-        </Card>
-      </div>
-
-      {/* Tables */}
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-        {/* Expiring Tools */}
-        <Card>
-          <CardHeader>
-            <CardTitle>Tools Near Expiry</CardTitle>
-          </CardHeader>
-          <CardContent>
-            <div className="space-y-4">
-              {expiringTools.map((tool) => (
-                <div key={tool.id} className="flex items-center justify-between p-3 border rounded-lg hover:bg-gray-50">
-                  <div>
-                    <p className="font-medium">{tool.description}</p>
-                    <p className="text-sm text-gray-500">ID: {tool.id} • {tool.site}</p>
-                  </div>
-                  <Badge className="bg-[#F59E0B] text-white">
-                    {new Date(tool.expiryDate).toLocaleDateString()}
-                  </Badge>
-                </div>
-              ))}
             </div>
-          </CardContent>
-        </Card>
 
-        {/* Recent Inspections */}
-        <Card>
-          <CardHeader>
-            <CardTitle>Recently Inspected Tools</CardTitle>
-          </CardHeader>
-          <CardContent>
-            <div className="space-y-4">
-              {recentInspections.map((inspection, index) => (
-                <div key={index} className="flex items-center justify-between p-3 border rounded-lg hover:bg-gray-50">
-                  <div>
-                    <p className="font-medium">{inspection.description}</p>
-                    <p className="text-sm text-gray-500 font-mono">ID: {inspection.id}</p>
-                    <p className="text-xs text-gray-400">{new Date(inspection.date).toLocaleDateString()}</p>
-                  </div>
-                  <Badge className={
-                    inspection.result === 'pass' ? 'bg-[#16A34A] capitalize' : 'bg-[#DC2626] capitalize'
-                  }>
-                    {inspection.result}
-                  </Badge>
-                </div>
-              ))}
-              {recentInspections.length === 0 && (
-                <p className="text-center text-gray-500 py-4">No recent inspections</p>
-              )}
+            {/* Stats Cards */}
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+                <Card className="shadow-sm border-l-4 border-l-blue-500">
+                    <CardContent className="p-6 flex items-center justify-between">
+                        <div>
+                            <p className="text-sm font-medium text-gray-500">Total Tools</p>
+                            <h3 className="text-2xl font-bold text-gray-900">{stats.total}</h3>
+                        </div>
+                        <div className="p-3 bg-blue-50 rounded-full">
+                            <Hammer className="w-6 h-6 text-blue-500" />
+                        </div>
+                    </CardContent>
+                </Card>
+                <Card className="shadow-sm border-l-4 border-l-green-500">
+                    <CardContent className="p-6 flex items-center justify-between">
+                        <div>
+                            <p className="text-sm font-medium text-gray-500">Usable Tools</p>
+                            <h3 className="text-2xl font-bold text-gray-900">{stats.usable}</h3>
+                        </div>
+                        <div className="p-3 bg-green-50 rounded-full">
+                            <ShieldCheck className="w-6 h-6 text-green-500" />
+                        </div>
+                    </CardContent>
+                </Card>
+                <Card className="shadow-sm border-l-4 border-l-red-500">
+                    <CardContent className="p-6 flex items-center justify-between">
+                        <div>
+                            <p className="text-sm font-medium text-gray-500">Scrap / Unusable</p>
+                            <h3 className="text-2xl font-bold text-gray-900">{stats.scrap}</h3>
+                        </div>
+                        <div className="p-3 bg-red-50 rounded-full">
+                            <AlertTriangle className="w-6 h-6 text-red-500" />
+                        </div>
+                    </CardContent>
+                </Card>
+                <Card className="shadow-sm border-l-4 border-l-amber-500">
+                    <CardContent className="p-6 flex items-center justify-between">
+                        <div>
+                            <p className="text-sm font-medium text-gray-500">Expiring (30 Days)</p>
+                            <h3 className="text-2xl font-bold text-gray-900">{stats.expiringSoon}</h3>
+                        </div>
+                        <div className="p-3 bg-amber-50 rounded-full">
+                            <Calendar className="w-6 h-6 text-amber-500" />
+                        </div>
+                    </CardContent>
+                </Card>
             </div>
-          </CardContent>
-        </Card>
-      </div>
-    </div>
-  );
+
+            {/* Charts Section */}
+            <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+                <Card>
+                    <CardHeader>
+                        <CardTitle className="text-lg">Tools by Status</CardTitle>
+                    </CardHeader>
+                    <CardContent className="h-[300px]">
+                        <ResponsiveContainer width="100%" height="100%">
+                            <PieChart>
+                                <Pie
+                                    data={statusData}
+                                    cx="50%"
+                                    cy="50%"
+                                    innerRadius={60}
+                                    outerRadius={100}
+                                    paddingAngle={5}
+                                    dataKey="value"
+                                >
+                                    {statusData.map((entry, index) => (
+                                        <Cell key={`cell-${index}`} fill={entry.color} />
+                                    ))}
+                                </Pie>
+                                <Tooltip />
+                                <Legend />
+                            </PieChart>
+                        </ResponsiveContainer>
+                    </CardContent>
+                </Card>
+
+                <Card>
+                    <CardHeader>
+                        <CardTitle className="text-lg">Tools Distribution by Site</CardTitle>
+                    </CardHeader>
+                    <CardContent className="h-[300px]">
+                        <ResponsiveContainer width="100%" height="100%">
+                            <BarChart data={siteData}>
+                                <CartesianGrid strokeDasharray="3 3" />
+                                <XAxis dataKey="name" />
+                                <YAxis />
+                                <Tooltip />
+                                <Bar dataKey="count" fill="#3B82F6">
+                                    {siteData.map((entry, index) => (
+                                        <Cell key={`cell-${index}`} fill={COLORS[index % COLORS.length]} />
+                                    ))}
+                                </Bar>
+                            </BarChart>
+                        </ResponsiveContainer>
+                    </CardContent>
+                </Card>
+            </div>
+
+        </div>
+    );
 };
 
 export default Dashboard;

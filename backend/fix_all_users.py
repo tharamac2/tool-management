@@ -9,7 +9,7 @@ def fix_all_users():
         {"username": "inspector", "role": "inspector", "email": "inspector@example.com"},
         {"username": "worker", "role": "worker", "email": "worker@example.com"},
         {"username": "store", "role": "store", "email": "store@example.com"},
-        {"username": "manager", "role": "manager", "email": "manager@example.com"},
+        {"username": "management", "role": "management", "email": "management@example.com"},
     ]
     
     pwd_hash = get_password_hash("Admin@1234")

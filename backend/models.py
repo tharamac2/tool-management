@@ -37,15 +37,21 @@ class ToolBase(SQLModel):
     safe_working_load: str
     purchaser_name: Optional[str] = None
     purchaser_contact: Optional[str] = None
+    supplier_code: Optional[str] = None # Added for custom ID generation
+    test_certificate: Optional[str] = None # Path to uploaded file
     date_of_supply: Optional[datetime] = None
     last_inspection_date: Optional[datetime] = None
     inspection_result: str = "usable" # usable, not-usable
     usability_percentage: Optional[float] = None
     validity_period: Optional[int] = None
     subcontractor_name: Optional[str] = None
+    subcontractor_code: Optional[str] = None
+    remarks: Optional[str] = None
     previous_site: Optional[str] = None
     current_site: Optional[str] = None
     next_site: Optional[str] = None
+    job_code: Optional[str] = None
+    job_description: Optional[str] = None
     qr_code: str = Field(index=True, unique=True)
     status: str = "usable" # usable, scrap
     expiry_date: Optional[datetime] = None
@@ -67,7 +73,16 @@ class ToolUpdate(SQLModel):
     safe_working_load: Optional[str] = None
     current_site: Optional[str] = None
     status: Optional[str] = None
-    # Add other fields as needed for updates
+    subcontractor_name: Optional[str] = None
+    subcontractor_code: Optional[str] = None
+    job_code: Optional[str] = None
+    job_description: Optional[str] = None
+    remarks: Optional[str] = None
+    previous_site: Optional[str] = None
+    next_site: Optional[str] = None
+    expiry_date: Optional[datetime] = None
+    validity_period: Optional[int] = None
+    date_of_supply: Optional[datetime] = None
 
 class InspectionBase(SQLModel):
     tool_id: int = Field(foreign_key="tool.id")

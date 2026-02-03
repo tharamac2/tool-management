@@ -61,7 +61,7 @@ const ViewTool = () => {
         doc.text('Inspection & Validity', 14, finalY);
 
         const dates = [
-            ['Date of Supply', new Date(tool.date_of_supply).toLocaleDateString()],
+            ['Date of Receipt', tool.date_of_supply ? new Date(tool.date_of_supply).toLocaleDateString() : 'N/A'],
             ['Last Inspection Date', new Date(tool.last_inspection_date).toLocaleDateString()],
             ['Next Inspection Due', tool.expiry_date ? new Date(tool.expiry_date).toLocaleDateString() : 'N/A'],
             ['Usability Percentage', tool.usability_percentage ? `${tool.usability_percentage}%` : 'N/A'],
@@ -170,11 +170,11 @@ const ViewTool = () => {
                             <p className="font-medium">{tool.current_site || '-'}</p>
                         </div>
                         <div className="col-span-2">
-                            <p className="text-gray-500">Purchaser</p>
+                            <p className="text-gray-500">Supplier</p>
                             <p className="font-medium">{tool.purchaser_name || '-'}</p>
                         </div>
                         <div className="col-span-2">
-                            <p className="text-gray-500">Supply Date</p>
+                            <p className="text-gray-500">Date of Receipt</p>
                             <p className="font-medium">{tool.date_of_supply ? new Date(tool.date_of_supply).toLocaleDateString() : '-'}</p>
                         </div>
                         <div className="col-span-2">
@@ -182,7 +182,7 @@ const ViewTool = () => {
                             <p className="font-medium">{tool.last_inspection_date ? new Date(tool.last_inspection_date).toLocaleDateString() : 'Never'}</p>
                         </div>
                         <div className="col-span-2">
-                            <p className="text-gray-500">Purchaser Contact</p>
+                            <p className="text-gray-500">Supplier Contact</p>
                             <p className="font-medium">{tool.purchaser_contact || '-'}</p>
                         </div>
                     </div>

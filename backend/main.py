@@ -1,7 +1,8 @@
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from .database import create_db_and_tables
-from .routes import users, tools, inspections, alerts
+from .routes import users, tools, inspections, alerts, upload
+from fastapi.staticfiles import StaticFiles
 
 app = FastAPI(title="QR Code Tools Management API")
 
@@ -23,10 +24,14 @@ app.add_middleware(
 def on_startup():
     create_db_and_tables()
 
+# Mount uploads directory to serve files
+app.mount("/uploads", StaticFiles(directory="uploads"), name="uploads")
+
 app.include_router(users.router)
 app.include_router(tools.router)
 app.include_router(inspections.router)
 app.include_router(alerts.router)
+app.include_router(upload.router)
 
 @app.get("/system/ip")
 def get_local_ip():

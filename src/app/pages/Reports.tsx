@@ -26,7 +26,8 @@ export default function Reports() {
         const fetchTools = async () => {
             try {
                 const response = await api.get('/tools/');
-                setTools(response.data);
+                const sortedTools = response.data.sort((a: any, b: any) => b.id - a.id);
+                setTools(sortedTools);
             } catch (error) {
                 console.error("Failed to fetch tools report", error);
             }
@@ -66,16 +67,17 @@ export default function Reports() {
         if (filteredTools.length === 0) return;
 
         const headers = [
-            "ID", "Tool Name", "QR Code", "Make (Year)", "Capacity", "SWL",
-            "Purchaser Name", "Purchaser Contact", "Date of Supply",
-            "Last Inspection", "Inspection Result", "Validity (Yrs)",
-            "Subcontractor", "Previous Site", "Current Site", "Next Site", "Status"
+            "S.No", "Tool ID", "Tool Name", "QR Code", "Make (Year)", "Capacity", "SWL",
+            "Purchaser Name", "Purchaser Contact", "Supplier Code", "Date of Supply",
+            "Last Inspection", "Inspection Result", "Usability %", "Validity (Yrs)", "Expiry Date",
+            "Subcontractor", "Subcontractor Code", "Previous Site", "Current Site", "Next Site", "Status", "Remarks", "Test Certificate"
         ];
 
         const csvRows = [
             headers.join(','),
-            ...filteredTools.map(tool => [
-                tool.id,
+            ...filteredTools.map((tool, index) => [
+                index + 1,
+                tool.id || '',
                 `"${tool.description?.replace(/"/g, '""') || ''}"`,
                 `"${tool.qr_code || ''}"`,
                 `"${tool.make || ''}"`,
@@ -83,15 +85,21 @@ export default function Reports() {
                 `"${tool.safe_working_load || ''}"`,
                 `"${tool.purchaser_name || ''}"`,
                 `"${tool.purchaser_contact || ''}"`,
+                `"${tool.supplier_code || ''}"`,
                 tool.date_of_supply ? new Date(tool.date_of_supply).toLocaleDateString() : '',
                 tool.last_inspection_date ? new Date(tool.last_inspection_date).toLocaleDateString() : '',
                 tool.inspection_result || '',
+                tool.usability_percentage || '',
                 tool.validity_period || '',
+                tool.expiry_date ? new Date(tool.expiry_date).toLocaleDateString() : '',
                 `"${tool.subcontractor_name || ''}"`,
+                `"${tool.subcontractor_code || ''}"`,
                 `"${tool.previous_site || ''}"`,
                 `"${tool.current_site || ''}"`,
                 `"${tool.next_site || ''}"`,
-                tool.status || ''
+                tool.status || '',
+                `"${tool.remarks || ''}"`,
+                tool.test_certificate ? `"http://localhost:8000${tool.test_certificate}"` : ''
             ].join(','))
         ];
 
@@ -116,11 +124,12 @@ export default function Reports() {
         doc.text(`Generated on: ${new Date().toLocaleDateString()}`, 14, 30);
 
         const tableColumn = [
-            "Tool Name", "QR Code", "Make", "Capacity", "SWL", "Purchaser",
+            "S.No", "Tool Name", "QR Code", "Make", "Capacity", "SWL", "Purchaser",
             "Supply Date", "Last Insp.", "Result", "Subcon", "Site", "Status"
         ];
 
-        const tableRows = filteredTools.map(tool => [
+        const tableRows = filteredTools.map((tool, index) => [
+            index + 1,
             tool.description,
             tool.qr_code,
             tool.make,
@@ -203,6 +212,7 @@ export default function Reports() {
                                     <TableHead className="min-w-[150px]">Subcontractor</TableHead>
                                     <TableHead className="min-w-[150px]">Current Site</TableHead>
                                     <TableHead className="min-w-[100px]">Status</TableHead>
+                                    <TableHead className="min-w-[100px]">Certificate</TableHead>
                                 </TableRow>
                                 {/* Column Filters Row */}
                                 <TableRow className="bg-gray-50 hover:bg-gray-50">
@@ -236,6 +246,7 @@ export default function Reports() {
                                             </SelectContent>
                                         </Select>
                                     </TableCell>
+                                    <TableCell className="p-2"></TableCell>
                                 </TableRow>
                             </TableHeader>
                             <TableBody>
@@ -258,6 +269,21 @@ export default function Reports() {
                                                     }`}>
                                                     {tool.status}
                                                 </span>
+                                            </TableCell>
+                                            <TableCell>
+                                                {tool.test_certificate ? (
+                                                    <a
+                                                        href={`http://localhost:8000${tool.test_certificate}`}
+                                                        target="_blank"
+                                                        rel="noreferrer"
+                                                        className="flex items-center text-blue-600 hover:text-blue-800 text-xs font-medium"
+                                                    >
+                                                        <Download className="w-3 h-3 mr-1" />
+                                                        Download
+                                                    </a>
+                                                ) : (
+                                                    <span className="text-gray-400 text-xs">-</span>
+                                                )}
                                             </TableCell>
                                         </TableRow>
                                     ))
